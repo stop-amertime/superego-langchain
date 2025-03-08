@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from .models import Message, WebSocketMessageType, MessageRole, init_models
 from .agents import get_default_constitution
 from .websocket_endpoints import handle_websocket_connection
+from .api.router import api_router
 
 # Load environment variables
 load_dotenv()
@@ -22,7 +23,11 @@ if not os.getenv("OPENROUTER_API_KEY"):
     logger.warning("OPENROUTER_API_KEY not set in environment variables. API calls will fail.")
 
 # Create FastAPI app
-app = FastAPI(title="Superego LangGraph API")
+app = FastAPI(
+    title="Superego LangGraph API",
+    description="API for the Superego LangGraph application",
+    version="0.1.0"
+)
 
 # Configure CORS
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
@@ -33,6 +38,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include the API router
+app.include_router(api_router)
 
 # Store active conversations
 conversations: Dict[str, List[Message]] = {}

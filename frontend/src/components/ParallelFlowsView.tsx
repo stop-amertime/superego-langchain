@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getWebSocketClient } from '../api/websocketClient';
-import { FlowConfig, FlowInstance, ParallelFlowResult, Message } from '../types';
+import { useFlowConfigs } from '../api/queryHooks';
+import { FlowConfig, FlowInstance, ParallelFlowResult, Message, MessageRole } from '../types';
 import MessageBubble from './MessageBubble';
 import SuperegoEvaluationBox from './SuperegoEvaluationBox';
 import './ParallelFlowsView.css';
@@ -16,7 +17,13 @@ const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
   conversationId,
   appData
 }) => {
-  const [flowConfigs, setFlowConfigs] = useState<FlowConfig[]>([]);
+  // Fetch flow configs using React Query
+  const { 
+    data: flowConfigs = [], 
+    isLoading: configsLoading, 
+    error: configsError 
+  } = useFlowConfigs();
+  
   const [selectedFlowIds, setSelectedFlowIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,56 +31,47 @@ const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
   const [isTokenStreaming, setIsTokenStreaming] = useState(false);
   const [streamingTokens, setStreamingTokens] = useState<{[flowId: string]: string}>({});
 
-  // Load flow configs on mount
+  // Set default selected flows when configs are loaded
   useEffect(() => {
-    const loadFlowConfigs = async () => {
-      setLoading(true);
-      setError(null);
-      
-      const wsClient = getWebSocketClient();
-      
-      const onMessage = (message: any) => {
-        if (message.type === 'flows_response') {
-          if (message.content && message.content.length > 0) {
-            if (!('conversation_id' in message.content[0])) {
-              setFlowConfigs(message.content);
-              
-              // Default select the first two configs if available
-              if (message.content.length >= 2 && selectedFlowIds.length === 0) {
-                setSelectedFlowIds([message.content[0].id, message.content[1].id]);
-              } else if (message.content.length === 1 && selectedFlowIds.length === 0) {
-                setSelectedFlowIds([message.content[0].id]);
-              }
-            }
-          }
-        } else if (message.type === 'parallel_flows_result') {
-          setResults(message.content);
-          setLoading(false);
-          setIsTokenStreaming(false);
-          setStreamingTokens({});
-        } else if (message.type === 'assistant_token') {
-          const flowId = message.content.flow_config_id;
-          
-          if (flowId) {
-            setIsTokenStreaming(true);
-            setStreamingTokens(prev => ({
-              ...prev,
-              [flowId]: (prev[flowId] || '') + message.content.token
-            }));
-          }
+    if (flowConfigs.length > 0 && !configsLoading && selectedFlowIds.length === 0) {
+      if (flowConfigs.length >= 2) {
+        setSelectedFlowIds([flowConfigs[0].id, flowConfigs[1].id]);
+      } else if (flowConfigs.length === 1) {
+        setSelectedFlowIds([flowConfigs[0].id]);
+      }
+    }
+  }, [flowConfigs, configsLoading, selectedFlowIds]);
+
+  // Setup WebSocket listeners for streaming tokens and results
+  useEffect(() => {
+    const wsClient = getWebSocketClient();
+    
+    const onMessage = (message: any) => {
+      if (message.type === 'parallel_flows_result') {
+        setResults(message.content);
+        setLoading(false);
+        setIsTokenStreaming(false);
+        setStreamingTokens({});
+      } else if (message.type === 'assistant_token') {
+        const flowId = message.content.flow_config_id;
+        
+        if (flowId) {
+          setIsTokenStreaming(true);
+          setStreamingTokens(prev => ({
+            ...prev,
+            [flowId]: (prev[flowId] || '') + message.content.token
+          }));
         }
-      };
-      
-      // Update callbacks
-      wsClient.updateCallbacks({ onMessage });
-      
-      // Request data
-      wsClient.sendCommand('get_flow_configs');
-      
-      setLoading(false);
+      }
     };
     
-    loadFlowConfigs();
+    // Update callbacks
+    wsClient.updateCallbacks({ onMessage });
+    
+    return () => {
+      // Clean up by removing our specific message handler
+      wsClient.updateCallbacks({ onMessage: undefined });
+    };
   }, []);
 
   const handleFlowSelectionChange = (flowId: string) => {
@@ -140,12 +138,28 @@ const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
                   
                   {/* Superego evaluation (if available) */}
                   {flowResult?.superego_evaluation && (
-                    <SuperegoEvaluationBox 
-                      evaluation={{
-                        ...flowResult.superego_evaluation,
-                        status: 'completed'
-                      }} 
-                    />
+                    <div className="message-bubble superego">
+                      <div className="message-header">
+                        <div className="message-info">
+                          <span className="message-sender">Superego</span>
+                          <span className="message-time">{new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</span>
+                          {flowResult.superego_evaluation.decision && (
+                            <span className={`decision-badge badge-${flowResult.superego_evaluation.decision === 'ALLOW' ? 'success' : 
+                                             flowResult.superego_evaluation.decision === 'CAUTION' ? 'warning' : 'danger'}`}>
+                              {flowResult.superego_evaluation.decision}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="message-content">
+                        {flowResult.superego_evaluation.reason && flowResult.superego_evaluation.reason.split('\n').map((line, i, arr) => (
+                          <React.Fragment key={i}>
+                            {line}
+                            {i < arr.length - 1 && <br />}
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
                   )}
                   
                   {/* Show streaming tokens if available */}
@@ -157,9 +171,11 @@ const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
                   
                   {/* Assistant message */}
                   {flowResult?.assistant_message && (
-                    <div className="message-bubble assistant">
-                      <div className="message-content">{flowResult.assistant_message.content}</div>
-                    </div>
+                    <MessageBubble
+                      message={flowResult.assistant_message}
+                      appData={appData}
+                      onRerun={() => {}}
+                    />
                   )}
                 </div>
               </div>

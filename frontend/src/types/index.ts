@@ -11,6 +11,21 @@ export interface Sysprompt {
   content: string;
 }
 
+// Agent-related types
+export enum AgentType {
+  AUTOGEN = "autogen",
+  INPUT_SUPEREGO = "input_superego",
+  OUTPUT_SUPEREGO = "output_superego"
+}
+
+export interface AgentConfig {
+  model?: string;
+  system_prompt?: string;
+  api_key?: string;
+  base_url?: string;
+  constitution?: string;
+}
+
 // Message roles
 export enum MessageRole {
   USER = "user",
@@ -48,7 +63,14 @@ export interface SuperegoEvaluation {
   id?: string;
   message?: string;
   constitutionId?: string;
-  checkpoint_id?: string;
+  timestamp?: string;
+}
+
+// Flow-related enums
+export enum FlowResult {
+  SUCCESS = "success",
+  BLOCKED = "blocked",
+  ERROR = "error"
 }
 
 export enum WebSocketMessageType {
@@ -68,7 +90,10 @@ export enum WebSocketMessageType {
   FLOW_CONFIGS_RESPONSE = "flow_configs_response",
   FLOW_INSTANCES_RESPONSE = "flow_instances_response",
   FLOWS_RESPONSE = "flows_response", // Keeping for backward compatibility
-  PARALLEL_FLOWS_RESULT = "parallel_flows_result"
+  PARALLEL_FLOWS_RESULT = "parallel_flows_result",
+  CREATE_CONSTITUTION = "create_constitution",
+  UPDATE_CONSTITUTION = "update_constitution",
+  DELETE_CONSTITUTION = "delete_constitution"
 }
 
 export interface AssistantToken {
@@ -105,6 +130,8 @@ export interface FlowConfig {
   description?: string;
   created_at: string;
   updated_at: string;
+  input_superego_config?: AgentConfig;
+  autogen_config?: AgentConfig;
 }
 
 export interface FlowTemplate {
@@ -136,4 +163,28 @@ export interface ParallelFlowResult {
   constitution_id?: string;
   sysprompt_id?: string;
   superego_enabled: boolean;
+  result?: FlowResult;
+}
+
+// Constitution management types
+export interface CreateConstitutionRequest {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface UpdateConstitutionRequest {
+  id: string;
+  name?: string;
+  content?: string;
+}
+
+export interface DeleteConstitutionRequest {
+  id: string;
+}
+
+export interface ConstitutionResponse {
+  success: boolean;
+  message: string;
+  constitution?: Constitution;
 }

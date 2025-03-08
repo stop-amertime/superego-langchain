@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { getWebSocketClient } from '../api/websocketClient';
-import { FlowInstance, FlowConfig, FlowTemplate } from '../types';
+import { FlowInstance, FlowConfig } from '../types';
 import './InstanceSidebar.css';
 
 interface InstanceSidebarProps {
@@ -20,8 +20,6 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({
   flowInstances,
   loading
 }) => {
-  const [error, setError] = useState<string | null>(null);
-  
   // UI state
   const [isCreating, setIsCreating] = useState(false);
   const [newInstanceName, setNewInstanceName] = useState('');
@@ -77,10 +75,6 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({
   
   if (loading) {
     return <div className="instance-sidebar loading">Loading instances...</div>;
-  }
-  
-  if (error) {
-    return <div className="instance-sidebar error">{error}</div>;
   }
   
   return (

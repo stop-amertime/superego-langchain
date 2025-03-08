@@ -1,14 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SuperegoEvaluation, SuperegoDecision } from '../types';
+import { SuperegoEvaluation, SuperegoDecision, Constitution } from '../types';
 import './SuperegoEvaluationBox.css';
 import ConstitutionSelector from './ConstitutionSelector';
 import { getWebSocketClient } from '../api/websocketClient';
+import { useConstitutions } from '../api/queryHooks';
 
 interface SuperegoEvaluationBoxProps {
   evaluation: SuperegoEvaluation;
 }
 
 const SuperegoEvaluationBox: React.FC<SuperegoEvaluationBoxProps> = ({ evaluation }) => {
+  // Fetch constitutions using React Query
+  const { 
+    data: constitutions = [], 
+    isLoading: constitutionsLoading, 
+    error: constitutionsError 
+  } = useConstitutions();
   // Determine if the evaluation is still in progress
   const isEvaluating = evaluation.status === 'started' || evaluation.status === 'thinking';
   
@@ -154,6 +161,9 @@ const SuperegoEvaluationBox: React.FC<SuperegoEvaluationBoxProps> = ({ evaluatio
           <ConstitutionSelector
             onSelectConstitution={handleConstitutionChange}
             selectedConstitutionId={selectedConstitutionId}
+            constitutions={constitutions}
+            isLoading={constitutionsLoading}
+            error={constitutionsError ? String(constitutionsError) : null}
           />
           {showRerunButton && (
             <button 

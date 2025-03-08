@@ -127,7 +127,7 @@ export class WebSocketClient {
    * @param payload The command payload
    * @param conversationId Optional conversation ID (uses current conversation ID if not provided)
    */
-  public sendCommand(type: string, payload: Record<string, any> = {}, conversationId?: string): void {
+  public sendCommand(type: string | WebSocketMessageType, payload: Record<string, any> = {}, conversationId?: string): void {
     const messageId = uuidv4();
     messageFlowTracker.startTracking(messageId, `Command: ${type}`);
     
@@ -330,6 +330,12 @@ export class WebSocketClient {
               });
             }
           }
+          break;
+          
+        case WebSocketMessageType.CREATE_CONSTITUTION:
+        case WebSocketMessageType.UPDATE_CONSTITUTION:
+        case WebSocketMessageType.DELETE_CONSTITUTION:
+          // These are outgoing message types, not incoming
           break;
           
         case WebSocketMessageType.SUPEREGO_EVALUATION:

@@ -111,28 +111,28 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, appData, onRerun
       </div>
 
       <div className="message-content">
-        {message.role === MessageRole.SUPEREGO && (
+        {message.role === MessageRole.SUPEREGO && appData && (
           <div className="message-metadata-header">
             <span className="metadata-label">Constitution:</span> 
             <ConstitutionSelector
               onSelectConstitution={setSelectedConstitutionId}
               selectedConstitutionId={selectedConstitutionId}
-              constitutions={appData.constitutions}
-              isLoading={appData.constitutionsLoading}
-              error={appData.constitutionsError}
+              constitutions={appData?.constitutions || []}
+              isLoading={appData?.constitutionsLoading || false}
+              error={appData?.constitutionsError || null}
             />
           </div>
         )}
         
-        {message.role === MessageRole.ASSISTANT && (
+        {message.role === MessageRole.ASSISTANT && appData && (
           <div className="message-metadata-header">
             <span className="metadata-label">System Prompt:</span>
             <SyspromptSelector
               onSelectSysprompt={setSelectedSyspromptId}
               selectedSyspromptId={selectedSyspromptId}
-              sysprompts={appData.sysprompts}
-              isLoading={appData.syspromptsLoading}
-              error={appData.syspromptsError}
+              sysprompts={appData?.sysprompts || []}
+              isLoading={appData?.syspromptsLoading || false}
+              error={appData?.syspromptsError || null}
             />
           </div>
         )}

@@ -1106,23 +1106,153 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         client_id
                     )
                 
-                elif message_type == "save_constitution":
+                elif message_type == "save_constitution" or message_type == "create_constitution":
                     # Save a new constitution
                     if not all(k in request_data for k in ["id", "name", "content"]):
                         raise ValueError("Missing required fields for constitution (id, name, content)")
                     
-                    success = save_constitution(
-                        request_data.get("id"),
-                        request_data.get("name"),
-                        request_data.get("content")
-                    )
+                    constitution_id = request_data.get("id")
+                    name = request_data.get("name")
+                    content = request_data.get("content")
+                    
+                    success = save_constitution(constitution_id, name, content)
+                    
+                    # Get the saved constitution to return to the client
+                    saved_constitution = None
+                    if success:
+                        constitutions = get_all_constitutions()
+                        saved_constitution = constitutions.get(constitution_id)
                     
                     await manager.send_message(
                         {
                             "type": WebSocketMessageType.SYSTEM_MESSAGE,
                             "content": {
                                 "success": success,
-                                "message": f"Constitution {'saved' if success else 'failed to save'}: {request_data.get('name')}"
+                                "message": f"Constitution {'saved' if success else 'failed to save'}: {name}",
+                                "constitution": saved_constitution
+                            },
+                            "timestamp": datetime.now().isoformat()
+                        }, 
+                        client_id
+                    )
+                    
+                elif message_type == "update_constitution":
+                    # Update an existing constitution
+                    if "id" not in request_data:
+                        raise ValueError("Missing constitution ID")
+                    
+                    constitution_id = request_data.get("id")
+                    name = request_data.get("name")
+                    content = request_data.get("content")
+                    
+                    # Get the existing constitution
+                    constitutions = get_all_constitutions()
+                    existing_constitution = constitutions.get(constitution_id)
+                    
+                    if not existing_constitution:
+                        await manager.send_message(
+                            {
+                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
+                                "content": {
+                                    "success": False,
+                                    "message": f"Constitution with ID {constitution_id} not found"
+                                },
+                                "timestamp": datetime.now().isoformat()
+                            }, 
+                            client_id
+                        )
+                        continue
+                    
+                    # Update with new values or keep existing ones
+                    updated_name = name if name is not None else existing_constitution["name"]
+                    updated_content = content if content is not None else existing_constitution["content"]
+                    
+                    success = save_constitution(constitution_id, updated_name, updated_content)
+                    
+                    # Get the updated constitution to return to the client
+                    updated_constitution = None
+                    if success:
+                        constitutions = get_all_constitutions()
+                        updated_constitution = constitutions.get(constitution_id)
+                    
+                    await manager.send_message(
+                        {
+                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
+                            "content": {
+                                "success": success,
+                                "message": f"Constitution {'updated' if success else 'failed to update'}: {updated_name}",
+                                "constitution": updated_constitution
+                            },
+                            "timestamp": datetime.now().isoformat()
+                        }, 
+                        client_id
+                    )
+                    
+                elif message_type == "delete_constitution":
+                    # Delete a constitution
+                    if "id" not in request_data:
+                        raise ValueError("Missing constitution ID")
+                    
+                    constitution_id = request_data.get("id")
+                    
+                    # Check if this is a protected constitution
+                    protected_ids = ["default", "none"]
+                    if constitution_id in protected_ids:
+                        await manager.send_message(
+                            {
+                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
+                                "content": {
+                                    "success": False,
+                                    "message": f"Cannot delete protected constitution: {constitution_id}"
+                                },
+                                "timestamp": datetime.now().isoformat()
+                            }, 
+                            client_id
+                        )
+                        continue
+                    
+                    # Get the constitution name before deleting
+                    constitutions = get_all_constitutions()
+                    constitution = constitutions.get(constitution_id)
+                    
+                    if not constitution:
+                        await manager.send_message(
+                            {
+                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
+                                "content": {
+                                    "success": False,
+                                    "message": f"Constitution with ID {constitution_id} not found"
+                                },
+                                "timestamp": datetime.now().isoformat()
+                            }, 
+                            client_id
+                        )
+                        continue
+                    
+                    constitution_name = constitution["name"]
+                    
+                    # Delete the constitution file
+                    import os
+                    from .constitution_registry import CONSTITUTIONS_DIR
+                    
+                    file_path = os.path.join(CONSTITUTIONS_DIR, f"{constitution_id}.md")
+                    
+                    try:
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+                            success = True
+                        else:
+                            success = False
+                    except Exception as e:
+                        logger.error(f"Error deleting constitution file: {str(e)}")
+                        success = False
+                    
+                    await manager.send_message(
+                        {
+                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
+                            "content": {
+                                "success": success,
+                                "message": f"Constitution {'deleted' if success else 'failed to delete'}: {constitution_name}"
                             },
                             "timestamp": datetime.now().isoformat()
                         }, 

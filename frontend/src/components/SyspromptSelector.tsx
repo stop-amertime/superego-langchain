@@ -1,12 +1,6 @@
 import React, { useEffect } from 'react';
+import { Sysprompt } from '../types';
 import './SyspromptSelector.css';
-
-// Define proper type for Sysprompt
-interface Sysprompt {
-  id: string;
-  name: string;
-  content: string;
-}
 
 interface SyspromptSelectorProps {
   onSelectSysprompt: (syspromptId: string) => void;
@@ -46,7 +40,7 @@ const SyspromptSelector: React.FC<SyspromptSelectorProps> = ({
   if (error || sysprompts.length === 0) {
     return (
       <div className="sysprompt-selector-error">
-        {error || 'No system prompts available'}
+        {error ? String(error) : 'No system prompts available'}
       </div>
     );
   }

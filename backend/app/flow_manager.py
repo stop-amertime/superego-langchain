@@ -129,7 +129,7 @@ def save_flow_templates():
                 template_id: template.dict()
                 for template_id, template in flow_templates.items()
             }
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, default=lambda o: o.dict() if hasattr(o, 'dict') else str(o))
     except Exception as e:
         logger.error(f"Error saving flow templates: {e}")
 
@@ -157,7 +157,7 @@ def save_flow_configs():
                 config_id: config.dict()
                 for config_id, config in flow_configs.items()
             }
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, default=lambda o: o.dict() if hasattr(o, 'dict') else str(o))
     except Exception as e:
         logger.error(f"Error saving flow configs: {e}")
 
@@ -185,7 +185,7 @@ def save_flow_instances():
                 instance_id: instance.dict()
                 for instance_id, instance in flow_instances.items()
             }
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, default=lambda o: o.dict() if hasattr(o, 'dict') else str(o))
     except Exception as e:
         logger.error(f"Error saving flow instances: {e}")
 

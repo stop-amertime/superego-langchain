@@ -94,6 +94,12 @@ class FlowConfig(BaseModel):
     description: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class FlowTemplate(BaseModel):
@@ -105,6 +111,12 @@ class FlowTemplate(BaseModel):
     is_default: bool = False
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class FlowInstance(BaseModel):
@@ -117,6 +129,12 @@ class FlowInstance(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     last_message_at: Optional[str] = None
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class ParallelFlowsRequest(BaseModel):
@@ -124,6 +142,12 @@ class ParallelFlowsRequest(BaseModel):
     flow_config_ids: List[str]
     user_input: str
     conversation_id: Optional[str] = None
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 class ParallelFlowResult(BaseModel):
@@ -135,6 +159,12 @@ class ParallelFlowResult(BaseModel):
     constitution_id: Optional[str] = None
     sysprompt_id: Optional[str] = None
     superego_enabled: bool = True
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 
 # Tool-related models

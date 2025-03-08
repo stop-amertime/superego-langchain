@@ -4,6 +4,7 @@ import Chat from './components/Chat.tsx'
 import TestMessages from './components/TestMessages.tsx'
 import InstanceSidebar from './components/InstanceSidebar'
 import ParallelFlowsView from './components/ParallelFlowsView'
+import ConstitutionManager from './components/ConstitutionManager'
 import './App.css'
 import './components/TestMessages.css'
 import { getWebSocketClient } from './api/websocketClient'
@@ -25,31 +26,9 @@ export interface AppData {
 // Define UI modes for the application
 export enum AppMode {
   CHAT = 'chat',
-  PARALLEL_FLOWS = 'parallel_flows'
+  PARALLEL_FLOWS = 'parallel_flows',
+  CONSTITUTIONS = 'constitutions'
 }
-
-// Default data to use ONLY if we can't load from backend
-// This should match what's in the backend files
-const DEFAULT_CONSTITUTIONS = [
-  {
-    id: "default",
-    name: "Default - Just the Rubric",
-    content: "Default constitution content - would be filled with actual content"
-  },
-  {
-    id: "none",
-    name: "No Constitution",
-    content: ""
-  }
-];
-
-const DEFAULT_SYSPROMPTS = [
-  {
-    id: "assistant_default",
-    name: "Assistant Default",
-    content: "You are a helpful AI assistant with a Superego mechanism."
-  }
-];
 
 function App() {
   const [apiKeySet, setApiKeySet] = useState<boolean>(false)
@@ -89,7 +68,7 @@ function App() {
     checkApiKey()
   }, [])
   
-  // Fetch constitutions, system prompts, instances, and configs from backend
+  // Fetch flow instances and configs from backend
   useEffect(() => {
     const wsClient = getWebSocketClient()
     
@@ -98,58 +77,12 @@ function App() {
       wsClient.connect()
     }
     
-    // Handle data responses
-    const handleDataResponse = (
-      type: WebSocketMessageType, 
-      content: any[],
-      setData: React.Dispatch<React.SetStateAction<any[]>>,
-      setLoading: React.Dispatch<React.SetStateAction<boolean>>,
-      setError: React.Dispatch<React.SetStateAction<string | null>>,
-      defaultData: any[],
-      errorMessage: string
-    ) => {
-      if (content && Array.isArray(content)) {
-        if (content.length > 0) {
-          setData(content)
-          setLoading(false)
-          setError(null)
-        } else {
-          // If we got an empty array, use defaults but show an error
-          setData(defaultData)
-          setError(errorMessage)
-          setLoading(false)
-        }
-      }
-    }
-    
     // Setup message handler for responses
     const onMessage = (message: any) => {
       console.log("App received WebSocket message:", message.type);
       
-      if (message.type === WebSocketMessageType.CONSTITUTIONS_RESPONSE) {
-        handleDataResponse(
-          message.type,
-          message.content,
-          setConstitutions,
-          setConstitutionsLoading,
-          setConstitutionsError,
-          DEFAULT_CONSTITUTIONS,
-          "Received empty constitutions list from server"
-        )
-      }
-      else if (message.type === WebSocketMessageType.SYSPROMPTS_RESPONSE) {
-        handleDataResponse(
-          message.type,
-          message.content,
-          setSysprompts,
-          setSyspromptsLoading,
-          setSyspromptsError,
-          DEFAULT_SYSPROMPTS,
-          "Received empty system prompts list from server"
-        )
-      }
-      else if (message.type === 'flow_instances_response' || 
-              message.type === WebSocketMessageType.FLOW_INSTANCES_RESPONSE) {
+      if (message.type === 'flow_instances_response' || 
+          message.type === WebSocketMessageType.FLOW_INSTANCES_RESPONSE) {
         console.log("Received flow instances:", message.content);
         // Store instances when we receive them
         if (message.content && Array.isArray(message.content)) {
@@ -201,45 +134,16 @@ function App() {
     
     // Request data if connected
     if (wsClient.isConnected()) {
-      // Request constitutions
-      wsClient.sendMessage(JSON.stringify({
-        type: 'get_constitutions'
-      }))
-      
-      // Request system prompts
-      wsClient.sendMessage(JSON.stringify({
-        type: 'get_sysprompts'
-      }))
-      
       // Request configs and instances
       wsClient.sendCommand('get_flow_configs');
       wsClient.sendCommand('get_flow_instances');
     }
     
-    // Set timeouts for requests
-    const TIMEOUT_MS = 5000
-    
-    const constitutionsTimeout = setTimeout(() => {
-      if (constitutionsLoading) {
-        setConstitutions(DEFAULT_CONSTITUTIONS)
-        setConstitutionsError("Timed out waiting for constitutions from server")
-        setConstitutionsLoading(false)
-      }
-    }, TIMEOUT_MS)
-    
-    const syspromptsTimeout = setTimeout(() => {
-      if (syspromptsLoading) {
-        setSysprompts(DEFAULT_SYSPROMPTS)
-        setSyspromptsError("Timed out waiting for system prompts from server")
-        setSyspromptsLoading(false)
-      }
-    }, TIMEOUT_MS)
-    
     return () => {
-      clearTimeout(constitutionsTimeout)
-      clearTimeout(syspromptsTimeout)
+      // Clean up by removing our specific message handler
+      wsClient.updateCallbacks({ onMessage: undefined });
     }
-  }, [constitutionsLoading, syspromptsLoading, selectedInstanceId])
+  }, [selectedInstanceId])
   
   // Handle instance selection
   const handleSelectInstance = (instanceId: string) => {
@@ -326,6 +230,12 @@ function App() {
               Compare Flows
             </button>
             <button 
+              className={`mode-toggle ${appMode === AppMode.CONSTITUTIONS ? 'active' : ''}`}
+              onClick={() => setAppMode(AppMode.CONSTITUTIONS)}
+            >
+              Constitutions
+            </button>
+            <button 
               className="sidebar-toggle"
               onClick={() => setShowSidebar(!showSidebar)}
             >
@@ -366,14 +276,6 @@ function App() {
           
           {appMode === AppMode.CHAT && (
             <Chat 
-              appData={{
-                constitutions,
-                sysprompts,
-                constitutionsLoading,
-                syspromptsLoading,
-                constitutionsError,
-                syspromptsError
-              }}
               conversationId={currentConversationId}
               onUserInputChange={handleUserInputChange}
             />
@@ -392,6 +294,10 @@ function App() {
                 syspromptsError
               }}
             />
+          )}
+          
+          {appMode === AppMode.CONSTITUTIONS && (
+            <ConstitutionManager />
           )}
         </main>
       </div>

@@ -1,12 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Constitution } from '../types';
 import './ConstitutionSelector.css';
-
-// Define proper type for Constitution
-interface Constitution {
-  id: string;
-  name: string;
-  content: string;
-}
 
 interface ConstitutionSelectorProps {
   onSelectConstitution: (constitutionId: string) => void;
@@ -75,7 +69,7 @@ const ConstitutionSelector: React.FC<ConstitutionSelectorProps> = ({
   if (error || constitutions.length === 0) {
     return (
       <div className="constitution-selector-error">
-        {error || 'No constitutions available'}
+        {error ? String(error) : 'No constitutions available'}
       </div>
     );
   }

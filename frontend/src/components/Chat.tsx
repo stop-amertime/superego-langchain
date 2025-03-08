@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { getWebSocketClient, WebSocketClientCallbacks } from '../api/websocketClient';
+import { useConstitutions, useSysprompts } from '../api/queryHooks';
 import { 
   Message, 
   MessageRole, 
@@ -19,12 +20,33 @@ import StreamingMessage from './StreamingMessage';
 import { AppData } from '../App';
 
 interface ChatProps {
-  appData: AppData;
   conversationId?: string | null;
   onUserInputChange?: (input: string) => void;
 }
 
-const Chat: React.FC<ChatProps> = ({ appData, conversationId: propConversationId, onUserInputChange }) => {
+const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserInputChange }) => {
+  // Fetch data using React Query
+  const { 
+    data: constitutions = [], 
+    isLoading: constitutionsLoading, 
+    error: constitutionsError 
+  } = useConstitutions();
+  
+  const { 
+    data: sysprompts = [], 
+    isLoading: syspromptsLoading, 
+    error: syspromptsError 
+  } = useSysprompts();
+  
+  // Create appData object from React Query results
+  const appData: AppData = {
+    constitutions: constitutions || [],
+    sysprompts: sysprompts || [],
+    constitutionsLoading,
+    syspromptsLoading,
+    constitutionsError: constitutionsError ? String(constitutionsError) : null,
+    syspromptsError: syspromptsError ? String(syspromptsError) : null
+  };
   // No need for input state anymore since ChatInput manages it
   
   // State for messages
