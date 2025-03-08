@@ -29,14 +29,13 @@ export enum AppMode {
   PARALLEL_FLOWS = 'parallel_flows',
   CONSTITUTIONS = 'constitutions'
 }
-
 function App() {
   const [apiKeySet, setApiKeySet] = useState<boolean>(false)
   const [showDebug, setShowDebug] = useState<boolean>(false)
   const [showSidebar, setShowSidebar] = useState<boolean>(true)
   const [appMode, setAppMode] = useState<AppMode>(AppMode.CHAT)
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
+  const [currentFlowInstanceId, setCurrentFlowInstanceId] = useState<string | null>(null)
   const [userInput, setUserInput] = useState<string>('')
   
   // Data states with initial empty values
@@ -89,15 +88,15 @@ function App() {
           setFlowInstances(message.content);
           setInstancesLoading(false);
           
-          // If there's a selected instance ID, ensure the conversation ID is updated
+          // If there's a selected instance ID, ensure the flow instance ID is updated
           if (selectedInstanceId) {
             const instance = message.content.find((inst: FlowInstance) => inst.id === selectedInstanceId);
-            if (instance && instance.conversation_id) {
-              setCurrentConversationId(instance.conversation_id);
-              // Update the WebSocketClient with this conversation ID
+            if (instance && instance.flow_instance_id) {
+              setCurrentFlowInstanceId(instance.flow_instance_id);
+              // Update the WebSocketClient with this flow instance ID
               const wsClient = getWebSocketClient();
-              wsClient.setConversationId(instance.conversation_id);
-              console.log(`Updated conversation ID to ${instance.conversation_id} from instance ${selectedInstanceId}`);
+              wsClient.setFlowInstanceId(instance.flow_instance_id);
+              console.log(`Updated flow instance ID to ${instance.flow_instance_id} from instance ${selectedInstanceId}`);
             }
           }
         }
@@ -106,7 +105,7 @@ function App() {
               message.type === WebSocketMessageType.FLOW_CONFIGS_RESPONSE ||
               // For backward compatibility:
               (message.type === 'flows_response' && message.content && 
-               message.content.length > 0 && !('conversation_id' in message.content[0]))) {
+               message.content.length > 0 && !('flow_instance_id' in message.content[0]))) {
         console.log("Received flow configs:", message.content);
         if (message.content && Array.isArray(message.content)) {
           setFlowConfigs(message.content);
@@ -114,7 +113,7 @@ function App() {
         }
       }
       else if (message.type === 'flows_response' && message.content && 
-               message.content.length > 0 && 'conversation_id' in message.content[0]) {
+               message.content.length > 0 && 'flow_instance_id' in message.content[0]) {
         // Legacy support for instances via flows_response
         console.log("Received flow instances via legacy flow_response:", message.content);
         setFlowInstances(message.content);
@@ -153,15 +152,15 @@ function App() {
     const selectedInstance = flowInstances.find(instance => instance.id === instanceId);
     
     if (selectedInstance) {
-      // Use the actual conversation_id from the instance, not the instance ID
-      const conversationId = selectedInstance.conversation_id;
-      setCurrentConversationId(conversationId);
+      // Use the actual flow_instance_id from the instance, not the instance ID
+      const flowInstanceId = selectedInstance.flow_instance_id;
+      setCurrentFlowInstanceId(flowInstanceId);
       
-      // Update the WebSocketClient's conversation ID for future messages
+      // Update the WebSocketClient's flow instance ID for future messages
       const wsClient = getWebSocketClient();
-      wsClient.setConversationId(conversationId);
+      wsClient.setFlowInstanceId(flowInstanceId);
       
-      console.log(`Selected instance ${instanceId} with conversation ID ${conversationId}`);
+      console.log(`Selected instance ${instanceId} with flow instance ID ${flowInstanceId}`);
     } else {
       console.error(`Could not find instance with ID ${instanceId}`);
     }
@@ -276,7 +275,7 @@ function App() {
           
           {appMode === AppMode.CHAT && (
             <Chat 
-              conversationId={currentConversationId}
+              flowInstanceId={currentFlowInstanceId}
               onUserInputChange={handleUserInputChange}
             />
           )}
@@ -284,7 +283,7 @@ function App() {
           {appMode === AppMode.PARALLEL_FLOWS && (
             <ParallelFlowsView 
               userInput={userInput}
-              conversationId={currentConversationId}
+              flowInstanceId={currentFlowInstanceId}
               appData={{
                 constitutions,
                 sysprompts,

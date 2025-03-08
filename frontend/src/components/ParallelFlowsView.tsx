@@ -8,13 +8,13 @@ import './ParallelFlowsView.css';
 
 interface ParallelFlowsViewProps {
   userInput: string;
-  conversationId: string | null;
+  flowInstanceId: string | null;
   appData: any;
 }
 
 const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
   userInput,
-  conversationId,
+  flowInstanceId,
   appData
 }) => {
   // Fetch flow configs using React Query
@@ -93,7 +93,7 @@ const ParallelFlowsView: React.FC<ParallelFlowsViewProps> = ({
     wsClient.sendCommand('run_parallel_flows', {
       flow_config_ids: selectedFlowIds,
       content: userInput,
-      conversation_id: conversationId
+      flow_instance_id: flowInstanceId
     });
   };
 

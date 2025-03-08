@@ -33,7 +33,7 @@ export class WebSocketClient {
   private reconnectTimeout: number | null = null;
   private url: string;
   private lastConnectionAttempt = 0;
-  private currentConversationId: string | null = null;
+  private currentFlowInstanceId: string | null = null;
 
   constructor(callbacks: WebSocketClientCallbacks = {}, url: string = WS_URL) {
     this.clientId = uuidv4();
@@ -107,18 +107,34 @@ export class WebSocketClient {
   }
 
   /**
-   * Sets the current active conversation ID for this client
+   * Sets the current active flow instance ID for this client
    */
-  public setConversationId(conversationId: string): void {
-    this.currentConversationId = conversationId;
-    debugMessageTypes.log('WebSocketClient.setConversationId', `Set conversation ID to ${conversationId}`);
+  public setFlowInstanceId(flowInstanceId: string): void {
+    this.currentFlowInstanceId = flowInstanceId;
+    debugMessageTypes.log('WebSocketClient.setFlowInstanceId', `Set flow instance ID to ${flowInstanceId}`);
   }
 
   /**
-   * Gets the current active conversation ID
+   * Gets the current active flow instance ID
+   */
+  public getFlowInstanceId(): string | null {
+    return this.currentFlowInstanceId;
+  }
+
+  /**
+   * Sets the current active conversation ID for this client (legacy method)
+   * @deprecated Use setFlowInstanceId instead
+   */
+  public setConversationId(conversationId: string): void {
+    this.setFlowInstanceId(conversationId);
+  }
+
+  /**
+   * Gets the current active conversation ID (legacy method)
+   * @deprecated Use getFlowInstanceId instead
    */
   public getConversationId(): string | null {
-    return this.currentConversationId;
+    return this.getFlowInstanceId();
   }
 
   /**
@@ -131,14 +147,14 @@ export class WebSocketClient {
     const messageId = uuidv4();
     messageFlowTracker.startTracking(messageId, `Command: ${type}`);
     
-    // Use provided conversation ID or fall back to the client's current one
-    const actualConversationId = conversationId || this.currentConversationId;
+    // Use provided conversation ID or fall back to the client's current flow instance ID
+    const actualConversationId = conversationId || this.currentFlowInstanceId;
     
     // Create the complete command with all necessary fields
     const command = {
       type: type,
       ...payload,
-      conversation_id: actualConversationId,
+      flow_instance_id: actualConversationId, // Use flow_instance_id instead of conversation_id
       client_message_id: messageId
     };
     
@@ -172,20 +188,20 @@ export class WebSocketClient {
     const messageId = uuidv4();
     messageFlowTracker.startTracking(messageId, 'User Message');
     
-    // Use provided conversation ID or fall back to the client's current one
-    const actualConversationId = conversationId || this.currentConversationId;
+    // Use provided conversation ID or fall back to the client's current flow instance ID
+    const actualConversationId = conversationId || this.currentFlowInstanceId;
     
     const data = JSON.stringify({
       type: WebSocketMessageType.USER_MESSAGE,
       content: message,
-      conversation_id: actualConversationId,
+      flow_instance_id: actualConversationId, // Use flow_instance_id instead of conversation_id
       client_message_id: messageId // Added for tracking
     });
 
     messageFlowTracker.addStep(messageId, 'Preparing to send message', {
       type: WebSocketMessageType.USER_MESSAGE,
       content: message,
-      conversation_id: actualConversationId
+      flow_instance_id: actualConversationId // Use flow_instance_id instead of conversation_id
     });
 
     // Check if socket is in a valid state

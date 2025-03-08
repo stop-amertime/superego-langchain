@@ -105,7 +105,7 @@ export interface WebSocketMessage {
   type: WebSocketMessageType;
   content: any;
   timestamp: string;
-  conversation_id?: string;
+  flow_instance_id?: string;
 }
 
 export interface ConversationState {
@@ -147,7 +147,7 @@ export interface FlowTemplate {
 export interface FlowInstance {
   id: string;
   flow_config_id: string;
-  conversation_id: string;
+  flow_instance_id: string;
   name: string;
   description?: string;
   created_at: string;

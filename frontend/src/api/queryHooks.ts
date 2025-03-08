@@ -67,9 +67,15 @@ export const useConstitutions = () => {
         queryKey: queryKeys.constitutions.all,
         queryFn: async () => {
             const response = await api_client.constitutions.getAll();
-            const data = extractData<Record<string, Constitution>>(response.data);
-            // Convert dictionary to array
-            return Object.values(data);
+            const data = extractData<any>(response.data);
+            
+            // Handle both array and dictionary formats
+            if (Array.isArray(data)) {
+                return data as Constitution[];
+            } else {
+                // Convert dictionary to array
+                return Object.values(data as Record<string, Constitution>);
+            }
         },
     });
 };
@@ -132,7 +138,15 @@ export const useSysprompts = () => {
         queryKey: queryKeys.sysprompts.all,
         queryFn: async () => {
             const response = await api_client.sysprompts.getAll();
-            return extractData<Sysprompt[]>(response.data);
+            const data = extractData<any>(response.data);
+            
+            // Handle both array and dictionary formats
+            if (Array.isArray(data)) {
+                return data as Sysprompt[];
+            } else {
+                // Convert dictionary to array
+                return Object.values(data as Record<string, Sysprompt>);
+            }
         },
     });
 };
@@ -195,7 +209,15 @@ export const useFlowConfigs = () => {
         queryKey: queryKeys.flowConfigs.all,
         queryFn: async () => {
             const response = await api_client.flowConfigs.getAll();
-            return extractData<FlowConfig[]>(response.data);
+            const data = extractData<any>(response.data);
+            
+            // Handle both array and dictionary formats
+            if (Array.isArray(data)) {
+                return data as FlowConfig[];
+            } else {
+                // Convert dictionary to array
+                return Object.values(data as Record<string, FlowConfig>);
+            }
         },
     });
 };
@@ -258,7 +280,15 @@ export const useFlowTemplates = () => {
         queryKey: queryKeys.flowTemplates.all,
         queryFn: async () => {
             const response = await api_client.flowTemplates.getAll();
-            return extractData<FlowTemplate[]>(response.data);
+            const data = extractData<any>(response.data);
+            
+            // Handle both array and dictionary formats
+            if (Array.isArray(data)) {
+                return data as FlowTemplate[];
+            } else {
+                // Convert dictionary to array
+                return Object.values(data as Record<string, FlowTemplate>);
+            }
         },
     });
 };
@@ -321,7 +351,15 @@ export const useFlowInstances = () => {
         queryKey: queryKeys.flowInstances.all,
         queryFn: async () => {
             const response = await api_client.flowInstances.getAll();
-            return extractData<FlowInstance[]>(response.data);
+            const data = extractData<any>(response.data);
+            
+            // Handle both array and dictionary formats
+            if (Array.isArray(data)) {
+                return data as FlowInstance[];
+            } else {
+                // Convert dictionary to array
+                return Object.values(data as Record<string, FlowInstance>);
+            }
         },
     });
 };

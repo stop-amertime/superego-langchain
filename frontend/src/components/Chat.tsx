@@ -20,11 +20,11 @@ import StreamingMessage from './StreamingMessage';
 import { AppData } from '../App';
 
 interface ChatProps {
-  conversationId?: string | null;
+  flowInstanceId?: string | null;
   onUserInputChange?: (input: string) => void;
 }
 
-const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserInputChange }) => {
+const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserInputChange }) => {
   // Fetch data using React Query
   const { 
     data: constitutions = [], 
@@ -73,13 +73,13 @@ const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserI
   // State for current superego evaluation
   const [currentEvaluation, setCurrentEvaluation] = useState<SuperegoEvaluation | null>(null);
   
-  // Conversation ID and prompt selections
-  const [internalConversationId, setInternalConversationId] = useState<string | null>(null);
+  // Flow instance ID and prompt selections
+  const [internalFlowInstanceId, setInternalFlowInstanceId] = useState<string | null>(null);
   const [selectedConstitutionId, setSelectedConstitutionId] = useState<string>('default');
   const [selectedSyspromptId, setSelectedSyspromptId] = useState<string>('assistant_default');
   
-  // Use the conversation ID from props if available, otherwise use internal state
-  const conversationId = propConversationId || internalConversationId;
+  // Use the flow instance ID from props if available, otherwise use internal state
+  const flowInstanceId = propFlowInstanceId || internalFlowInstanceId;
   
   // System messages
   const [systemMessage, setSystemMessage] = useState<string | null>(null);
@@ -96,19 +96,19 @@ const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserI
     };
   }, []);
   
-  // Initialize conversation ID and WebSocket client reference
+  // Initialize flow instance ID and WebSocket client reference
   const wsClientRef = useRef<ReturnType<typeof getWebSocketClient> | null>(null);
 
-  // Initialize conversation ID from props
+  // Initialize flow instance ID from props
   useEffect(() => {
-    if (propConversationId) {
-      setInternalConversationId(propConversationId);
+    if (propFlowInstanceId) {
+      setInternalFlowInstanceId(propFlowInstanceId);
       
-      // Set the conversation ID in the WebSocket client 
+      // Set the flow instance ID in the WebSocket client 
       const wsClient = getWebSocketClient();
-      wsClient.setConversationId(propConversationId);
+      wsClient.setFlowInstanceId(propFlowInstanceId);
     }
-  }, [propConversationId]);
+  }, [propFlowInstanceId]);
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -353,7 +353,7 @@ const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserI
       content: message,
       constitution_id: selectedConstitutionId,
       sysprompt_id: selectedSyspromptId
-    }, conversationId || undefined);
+    }, flowInstanceId || undefined);
     
     // Update UI state
     setIsSending(true);
@@ -370,7 +370,7 @@ const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserI
       setCurrentEvaluation(null);
       setSystemMessage('Request timed out. Please try again.');
     }, TIMEOUT_MS);
-  }, [conversationId, isSending, selectedConstitutionId, selectedSyspromptId, onUserInputChange]);
+  }, [flowInstanceId, isSending, selectedConstitutionId, selectedSyspromptId, onUserInputChange]);
   
   // Cancel message processing
   const handleCancelProcessing = useCallback(() => {
@@ -392,11 +392,11 @@ const Chat: React.FC<ChatProps> = ({ conversationId: propConversationId, onUserI
       message_id: messageId,
       constitution_id: constitutionId,
       sysprompt_id: syspromptId
-    }, conversationId || undefined);
+    }, flowInstanceId || undefined);
     
     setIsSending(true);
     setProcessingStep(0);
-  }, [conversationId]);
+  }, [flowInstanceId]);
 
   // Render the chat interface
   return (

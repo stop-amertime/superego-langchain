@@ -111,7 +111,7 @@ export const flowTemplatesApi = {
 export const flowInstancesApi = {
     getAll: () => api.get<ApiResponse<FlowInstance[]>>('/api/flow-instances'),
     getById: (id: string) => api.get<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}`),
-    create: (instance: Omit<FlowInstance, 'id' | 'conversation_id' | 'created_at' | 'updated_at' | 'last_message_at'>) => 
+    create: (instance: Omit<FlowInstance, 'id' | 'flow_instance_id' | 'created_at' | 'updated_at' | 'last_message_at'>) => 
         api.post<ApiResponse<FlowInstance>>('/api/flow-instances', instance),
     update: (id: string, instance: Partial<FlowInstance>) => 
         api.put<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}`, instance),
