@@ -1,7 +1,10 @@
 import logging
 import json
 import os
-from typing import Dict, List, Any, Optional
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional, AsyncGenerator
+from autogen_agentchat.agents import AssistantAgent
+from autogen_ext.models.openai import OpenAIChatCompletionClient
 
 from .models import SuperegoEvaluation, SuperegoDecision
 
@@ -9,21 +12,157 @@ from .models import SuperegoEvaluation, SuperegoDecision
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Path to constitutions file
-CONSTITUTIONS_FILE = os.path.join(os.path.dirname(__file__), "data", "constitutions.json")
+# Agent interface
+class Agent(ABC):
+    """Base interface for all agents"""
+    
+    @abstractmethod
+    async def process(self, input_text: str, context: Dict[str, Any]) -> str:
+        """Process input and return a complete response"""
+        pass
+    
+    @abstractmethod
+    async def stream(self, input_text: str, context: Dict[str, Any]) -> AsyncGenerator[str, None]:
+        """Stream the response token by token"""
+        pass
+    
+    @abstractmethod
+    async def interrupt(self) -> bool:
+        """Interrupt the current processing"""
+        pass
 
-def load_constitutions():
-    """Load constitutions from the JSON file"""
-    try:
-        with open(CONSTITUTIONS_FILE, 'r') as f:
-            data = json.load(f)
-            return {constitution["id"]: constitution for constitution in data.get("constitutions", [])}
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.error(f"Error loading constitutions: {e}")
-        return {}
+# Agent factory
+class AgentFactory:
+    """Factory for creating agents of different types"""
+    
+    _registry = {}
+    
+    @classmethod
+    def register(cls, agent_type: str, agent_class):
+        """Register an agent class for a specific type"""
+        cls._registry[agent_type] = agent_class
+        logger.info(f"Registered agent type: {agent_type}")
+    
+    @classmethod
+    def create(cls, agent_type: str, config: Dict[str, Any]) -> Agent:
+        """Create an agent of the specified type"""
+        if agent_type not in cls._registry:
+            raise ValueError(f"Unknown agent type: {agent_type}")
+        
+        logger.info(f"Creating agent of type: {agent_type}")
+        return cls._registry[agent_type](config)
 
-# Load all constitutions
-ALL_CONSTITUTIONS = load_constitutions()
+# AutoGen agent implementation
+class AutoGenAgent(Agent):
+    """Agent implementation using AutoGen"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.model = config.get("model", "anthropic/claude-3.7-sonnet")
+        self.system_prompt = config.get("system_prompt", "You are a helpful AI assistant.")
+        self.api_key = config.get("api_key")
+        self.base_url = config.get("base_url", "https://openrouter.ai/api/v1")
+        
+        # Create the model client
+        # When using a non-OpenAI model with OpenRouter, we need to provide model_info
+        self.model_client = OpenAIChatCompletionClient(
+            model=self.model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+            model_info={
+                "name": self.model,
+                "context_length": 100000,  # Claude 3.7 Sonnet context length
+                "max_tokens": 4096,  # Max output tokens
+                "is_chat_model": True,
+                "vision": False,  # Required field in v0.4.7+
+                "function_calling": True,  # Required field in v0.4.7+
+                "json_output": True,  # Required field for OpenAI-compatible APIs
+                "family": "anthropic"  # Specify the model family
+            }
+        )
+        
+        # Create the AutoGen agent
+        self.agent = AssistantAgent(
+            name="assistant",
+            model_client=self.model_client,
+            system_message=self.system_prompt,
+            model_client_stream=True
+        )
+        
+        self._is_running = False
+        logger.info(f"Initialized AutoGenAgent with model: {self.model}")
+    
+    async def process(self, input_text: str, context: Dict[str, Any]) -> str:
+        """Process input and return a complete response"""
+        logger.info(f"Processing input with AutoGenAgent: {input_text[:50]}...")
+        
+        try:
+            # Use the AutoGen agent to process the input
+            response = await self.agent.run(task=input_text)
+            return response
+        except Exception as e:
+            logger.error(f"Error in AutoGenAgent.process: {str(e)}")
+            return f"Error: {str(e)}"
+    
+    async def stream(self, input_text: str, context: Dict[str, Any]) -> AsyncGenerator[str, None]:
+        """Stream the response token by token"""
+        logger.info(f"Streaming response for input: {input_text[:50]}...")
+        
+        # Set running flag
+        self._is_running = True
+        
+        try:
+            # Use the AutoGen agent to stream the response
+            async for message in self.agent.run_stream(task=input_text):
+                if not self._is_running:
+                    logger.info("Streaming interrupted")
+                    break
+                
+                # Handle different types of messages
+                from autogen_agentchat.messages import ModelClientStreamingChunkEvent, TextMessage
+                from autogen_agentchat.base import TaskResult
+                
+                if isinstance(message, ModelClientStreamingChunkEvent):
+                    # This is a token from the model
+                    yield message.content
+                elif isinstance(message, TextMessage) and message.source == "assistant":
+                    # This is a complete message from the assistant
+                    # We don't need to yield this as we've already yielded the tokens
+                    pass
+                elif isinstance(message, TaskResult):
+                    # This is the final result, we don't need to yield it
+                    pass
+                elif isinstance(message, str):
+                    # For backward compatibility
+                    yield message
+                else:
+                    # Log unknown message types for debugging
+                    logger.debug(f"Unknown message type in stream: {type(message)}")
+        except Exception as e:
+            logger.error(f"Error in AutoGenAgent.stream: {str(e)}")
+            yield f"Error: {str(e)}"
+        finally:
+            self._is_running = False
+    
+    async def interrupt(self) -> bool:
+        """Interrupt the current processing"""
+        if self._is_running:
+            logger.info("Interrupting AutoGenAgent")
+            self._is_running = False
+            return True
+        return False
+
+# Register the AutoGenAgent with the factory
+AgentFactory.register("autogen", AutoGenAgent)
+
+# Import the constitution registry
+from .constitution_registry import ConstitutionRegistry
+
+# Path to constitutions directory
+CONSTITUTIONS_DIR = os.path.join(os.path.dirname(__file__), "data", "constitutions")
+
+# Initialize the constitution registry
+constitution_registry = ConstitutionRegistry(CONSTITUTIONS_DIR)
 
 # Default constitution ID
 DEFAULT_CONSTITUTION_ID = "default"
@@ -31,8 +170,9 @@ DEFAULT_CONSTITUTION_ID = "default"
 # Get the default constitution content
 def get_default_constitution():
     """Get the default constitution content"""
-    if DEFAULT_CONSTITUTION_ID in ALL_CONSTITUTIONS:
-        return ALL_CONSTITUTIONS[DEFAULT_CONSTITUTION_ID]["content"]
+    constitution = constitution_registry.get_constitution(DEFAULT_CONSTITUTION_ID)
+    if constitution:
+        return constitution["content"]
     else:
         # Fallback if default constitution is not found
         logger.warning(f"Default constitution '{DEFAULT_CONSTITUTION_ID}' not found. Using fallback.")
@@ -72,12 +212,12 @@ Always remain balanced and fair in your evaluations, avoiding unnecessary restri
 # Get all available constitutions
 def get_all_constitutions() -> Dict[str, Dict[str, Any]]:
     """Get all available constitutions"""
-    return ALL_CONSTITUTIONS
+    return constitution_registry.get_all_constitutions()
 
 # Save a new constitution
 def save_constitution(constitution_id: str, name: str, content: str) -> bool:
     """
-    Save a new constitution to the JSON file
+    Save a new constitution to a markdown file
     
     Args:
         constitution_id: Unique ID for the constitution
@@ -87,27 +227,4 @@ def save_constitution(constitution_id: str, name: str, content: str) -> bool:
     Returns:
         True if saved successfully, False otherwise
     """
-    try:
-        # Load current constitutions
-        constitutions = load_constitutions()
-        
-        # Add or update the constitution
-        constitutions[constitution_id] = {
-            "id": constitution_id,
-            "name": name,
-            "content": content
-        }
-        
-        # Write to file
-        with open(CONSTITUTIONS_FILE, 'w') as f:
-            json.dump({"constitutions": list(constitutions.values())}, f, indent=2)
-        
-        # Update global variable
-        global ALL_CONSTITUTIONS
-        ALL_CONSTITUTIONS = constitutions
-        
-        logger.info(f"Constitution '{constitution_id}' saved successfully")
-        return True
-    except Exception as e:
-        logger.error(f"Error saving constitution: {e}")
-        return False
+    return constitution_registry.save_constitution(constitution_id, name, content)
