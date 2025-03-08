@@ -1,0 +1,68 @@
+.processing-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 15px;
+  background-color: #f5f7f9;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.processing-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: opacity 0.3s ease;
+  opacity: 0.5;
+}
+
+.processing-step.active {
+  opacity: 1;
+}
+
+.processing-step.completed {
+  opacity: 0.8;
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: #ccc;
+  color: white;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.step-number.active {
+  background-color: #2196f3;
+}
+
+.step-number.completed {
+  background-color: #4caf50;
+}
+
+.step-description {
+  font-size: 14px;
+  color: #555;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(33, 150, 243, 0.3);
+  border-radius: 50%;
+  border-top-color: #2196f3;
+  animation: spin 1s linear infinite;
+  margin-left: auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

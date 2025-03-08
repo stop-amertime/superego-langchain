@@ -1,0 +1,245 @@
+/* Inline status in chat UI */
+.connection-status-inline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 10px 0;
+  width: 100%;
+}
+
+.connection-status-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.connection-status-text {
+  font-weight: bold;
+  padding: 5px 10px;
+  border-radius: 4px;
+}
+
+.connection-status-text.connecting {
+  color: #ff9800; /* Orange color for Connecting */
+  animation: pulse 1.5s infinite;
+}
+
+.connection-status-text.disconnected {
+  color: #dc3545; /* Red color for Disconnected */
+}
+
+.connection-status-details {
+  margin-top: 5px;
+  width: 100%;
+  max-width: 300px;
+  text-align: center;
+}
+
+.connection-details-box {
+  background-color: #f8f9fa;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #495057;
+  margin-top: 5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Header connection status styling */
+.connection-status {
+  display: flex;
+  align-items: center;
+  margin-right: 15px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.status-indicator.connected {
+  background-color: #28a745; /* Green */
+}
+
+.status-indicator.disconnected {
+  background-color: #dc3545; /* Red */
+}
+
+/* Special styles for the connection status states in the header */
+.connection-status .connecting-text {
+  color: #ff9800; /* Orange */
+  animation: pulse 1.5s infinite;
+}
+
+.connection-status .disconnected-text {
+  color: #dc3545; /* Red */
+}
+
+/* Connection status details in header */
+.connection-status {
+  position: relative;
+}
+
+.connection-status-details {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 1000;
+  margin-top: 4px;
+  width: max-content;
+}
+
+.connection-attempt-info {
+  font-size: 0.75rem;
+  background: white;
+  border-radius: 4px;
+  padding: 6px 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  color: #495057;
+  white-space: nowrap;
+}
+
+.connection-attempt-info.failed {
+  color: #dc3545;
+}
+
+.inline-reconnect-button {
+  background-color: white;
+  color: #2a7fff;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  margin-left: 10px;
+}
+
+.inline-reconnect-button:hover {
+  background-color: #f8f9fa;
+}
+
+.ellipsis-animation {
+  display: inline-block;
+  width: 20px;
+  position: relative;
+}
+
+.ellipsis-animation:after {
+  content: '...';
+  position: absolute;
+  overflow: hidden;
+  display: inline-block;
+  vertical-align: bottom;
+  animation: ellipsis 2s infinite;
+  width: 0px;
+}
+
+@keyframes ellipsis {
+  0% { width: 0px; }
+  33% { width: 6px; }
+  66% { width: 12px; }
+  100% { width: 18px; }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+/* Modal overlay - for persistent connection issues */
+.connection-status-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1001; /* Higher than status bar */
+}
+
+.connection-status-modal {
+  background-color: white;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.connection-status-header {
+  background-color: #2a7fff;
+  color: white;
+  padding: 15px 20px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.connection-status-header h3 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.connection-status-content {
+  padding: 25px;
+  text-align: center;
+}
+
+.connection-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(0, 0, 0, 0.1);
+  border-top-color: #2a7fff;
+  border-radius: 50%;
+  margin: 0 auto 20px auto;
+  animation: spinner 1s linear infinite;
+}
+
+.connection-error-icon {
+  width: 50px;
+  height: 50px;
+  line-height: 50px;
+  background-color: #dc3545;
+  color: white;
+  font-size: 30px;
+  font-weight: bold;
+  border-radius: 50%;
+  margin: 0 auto 20px auto;
+}
+
+.reconnect-attempt {
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: #6c757d;
+}
+
+.disconnected-message {
+  margin: 15px 0;
+  color: #6c757d;
+}
+
+.reconnect-button {
+  margin-top: 15px;
+  padding: 10px 20px;
+  background-color: #2a7fff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.reconnect-button:hover {
+  background-color: #0056b3;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}

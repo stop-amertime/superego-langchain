@@ -1,0 +1,267 @@
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 200px);
+  min-height: 500px;
+  background-color: white;
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+}
+
+.chat-header-container {
+  display: flex;
+  flex-direction: column;
+  background-color: var(--gray-100);
+  border-bottom: 1px solid var(--gray-300);
+}
+
+.prompt-selectors {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 0 1rem 0.5rem;
+  gap: 1rem;
+}
+
+.chat-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+}
+
+.chat-header h2 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 500;
+}
+
+.connection-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.connection-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.reset-button {
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.3rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.reset-button:hover {
+  background-color: #d32f2f;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.status-indicator.connected {
+  background-color: var(--success-color);
+}
+
+.status-indicator.disconnected {
+  background-color: var(--danger-color);
+}
+
+
+.messages-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background-color: #f8f9fa;
+  position: relative;
+}
+
+/* Make sure messages take full width of their container */
+.messages-container > * {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.chat-input-form {
+  display: flex;
+  padding: 1rem;
+  border-top: 1px solid var(--gray-300);
+  background-color: var(--gray-100);
+  gap: 0.5rem;
+}
+
+.chat-input-form textarea {
+  flex: 1;
+  resize: none;
+  padding: 0.75rem;
+  background-color: white;
+  border: 1px solid var(--gray-300);
+  border-radius: var(--border-radius);
+  height: 70px;
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+.send-button {
+  align-self: flex-end;
+  height: 40px;
+}
+
+/* Updated loading indicator with process steps */
+.loading-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background-color: var(--gray-200);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  align-self: center;
+  margin: 1rem 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  border-top-color: var(--primary-color);
+  border-radius: 50%;
+  animation: spinner 0.8s linear infinite;
+}
+
+/* New styles for step processing indicator */
+.processing-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  background-color: var(--gray-100);
+  border-radius: var(--border-radius);
+  margin: 0.5rem 0;
+  border-left: 3px solid var(--primary-color);
+}
+
+.processing-step {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+}
+
+.processing-step.active {
+  background-color: rgba(0, 123, 255, 0.1);
+}
+
+.processing-step.completed {
+  color: var(--success-color);
+}
+
+.step-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background-color: var(--gray-300);
+  color: var(--text-color);
+  font-weight: 500;
+  font-size: 0.8rem;
+}
+
+.step-number.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.step-number.completed {
+  background-color: var(--success-color);
+  color: white;
+}
+
+@keyframes spinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.system-message {
+  padding: 0.75rem 1rem;
+  background-color: var(--gray-200);
+  border-radius: var(--border-radius);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  align-self: center;
+  margin: 0.5rem 0;
+  max-width: 80%;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.debug-info {
+  padding: 0.5rem 0.75rem;
+  background-color: #f0f8ff;
+  border: 1px solid #add8e6;
+  border-radius: var(--border-radius);
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+  color: #333;
+  font-family: monospace;
+}
+
+.debug-info p {
+  margin: 0.2rem 0;
+}
+
+/* Styles for message bubbles when streaming */
+.message-bubble.streaming {
+  border-left: 3px solid var(--primary-color);
+  background-color: rgba(0, 123, 255, 0.05);
+}
+
+.cursor-blink {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background-color: var(--primary-color);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
