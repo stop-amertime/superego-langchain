@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, KeyboardEvent } from 'react';
 import './ChatInput.css';
 
 interface ChatInputProps {
@@ -22,13 +22,27 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSubmit, isConnected, isSending 
     onSubmit(input);
     setInput('');
   };
+  
+  // Handle keyboard events
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Submit on Enter without Shift key
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault(); // Prevent default to avoid newline
+      
+      if (input.trim() && isConnected && !isSending) {
+        onSubmit(input);
+        setInput('');
+      }
+    }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="chat-input-form">
       <textarea 
         value={input} 
-        onChange={handleInputChange} 
-        placeholder="Type your message here..."
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
+        placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
         disabled={!isConnected || isSending}
         rows={3}
       />

@@ -9,6 +9,7 @@ import './App.css'
 import './components/TestMessages.css'
 import { getWebSocketClient } from './api/websocketClient'
 import { WebSocketMessageType } from './types'
+import { useCreateFlowInstance, queryClient } from './api/queryHooks'
 
 // Import the interfaces from the types folder for better organization
 import { Constitution, Sysprompt, FlowInstance, FlowConfig } from './types'
@@ -31,7 +32,6 @@ export enum AppMode {
 }
 function App() {
   const [apiKeySet, setApiKeySet] = useState<boolean>(false)
-  const [showDebug, setShowDebug] = useState<boolean>(false)
   const [showSidebar, setShowSidebar] = useState<boolean>(true)
   const [appMode, setAppMode] = useState<AppMode>(AppMode.CHAT)
   const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null)
@@ -91,12 +91,12 @@ function App() {
           // If there's a selected instance ID, ensure the flow instance ID is updated
           if (selectedInstanceId) {
             const instance = message.content.find((inst: FlowInstance) => inst.id === selectedInstanceId);
-            if (instance && instance.flow_instance_id) {
-              setCurrentFlowInstanceId(instance.flow_instance_id);
+            if (instance && instance.conversation_id) {
+              setCurrentFlowInstanceId(instance.conversation_id);
               // Update the WebSocketClient with this flow instance ID
               const wsClient = getWebSocketClient();
-              wsClient.setFlowInstanceId(instance.flow_instance_id);
-              console.log(`Updated flow instance ID to ${instance.flow_instance_id} from instance ${selectedInstanceId}`);
+              wsClient.setFlowInstanceId(instance.conversation_id);
+              console.log(`Updated flow instance ID to ${instance.conversation_id} from instance ${selectedInstanceId}`);
             }
           }
         }
@@ -152,8 +152,8 @@ function App() {
     const selectedInstance = flowInstances.find(instance => instance.id === instanceId);
     
     if (selectedInstance) {
-      // Use the actual flow_instance_id from the instance, not the instance ID
-      const flowInstanceId = selectedInstance.flow_instance_id;
+      // Use the actual conversation_id from the instance, not the instance ID
+      const flowInstanceId = selectedInstance.conversation_id;
       setCurrentFlowInstanceId(flowInstanceId);
       
       // Update the WebSocketClient's flow instance ID for future messages
@@ -165,6 +165,9 @@ function App() {
       console.error(`Could not find instance with ID ${instanceId}`);
     }
   };
+  
+  // Create instance mutation
+  const createInstanceMutation = useCreateFlowInstance();
   
   // Function to create default instance if needed
   const createDefaultInstanceIfNeeded = () => {
@@ -178,12 +181,30 @@ function App() {
     // Find a config with superego enabled (preferably) or just take the first one
     const standardConfig = flowConfigs.find(c => c.superego_enabled) || flowConfigs[0];
     
-    // Create a default instance
-    const wsClient = getWebSocketClient();
-    wsClient.sendCommand('create_flow_instance', {
+    // Create a default instance using the REST API
+    const newInstanceData = {
       name: "Default Session",
       flow_config_id: standardConfig.id,
       description: "Automatically created default session"
+    };
+    
+    createInstanceMutation.mutate(newInstanceData as any, {
+      onSuccess: (data) => {
+        // Invalidate the flow instances query to refresh the list
+        queryClient.invalidateQueries({ queryKey: ['flowInstances'] });
+        
+        // Select the newly created instance
+        if (data && data.id) {
+          setSelectedInstanceId(data.id);
+          
+          // Set the flow instance ID for WebSocket communication
+          if (data.conversation_id) {
+            setCurrentFlowInstanceId(data.conversation_id);
+            const wsClient = getWebSocketClient();
+            wsClient.setFlowInstanceId(data.conversation_id);
+          }
+        }
+      }
     });
   };
   
@@ -196,16 +217,35 @@ function App() {
   
   // Handle creating a new instance
   const handleCreateInstance = (newInstanceData: {name: string, flow_config_id: string, description?: string}) => {
-    // Create the instance via WebSocket
-    const wsClient = getWebSocketClient();
-    wsClient.sendCommand('create_flow_instance', newInstanceData);
-    
-    // Note: we'll select the instance when we receive the confirmation in the message handler
+    // Create the instance via REST API
+    createInstanceMutation.mutate(newInstanceData as any, {
+      onSuccess: (data) => {
+        // Invalidate the flow instances query to refresh the list
+        queryClient.invalidateQueries({ queryKey: ['flowInstances'] });
+        
+        // Select the newly created instance
+        if (data && data.id) {
+          setSelectedInstanceId(data.id);
+          
+          // Set the flow instance ID for WebSocket communication
+          if (data.conversation_id) {
+            setCurrentFlowInstanceId(data.conversation_id);
+            const wsClient = getWebSocketClient();
+            wsClient.setFlowInstanceId(data.conversation_id);
+          }
+        }
+      }
+    });
   };
   
   // Handle user input changes (for the parallel flows view)
   const handleUserInputChange = (input: string) => {
     setUserInput(input);
+  };
+
+  // Handle sidebar toggle
+  const handleToggleSidebar = () => {
+    setShowSidebar(!showSidebar);
   };
 
   return (
@@ -234,23 +274,9 @@ function App() {
             >
               Constitutions
             </button>
-            <button 
-              className="sidebar-toggle"
-              onClick={() => setShowSidebar(!showSidebar)}
-            >
-              {showSidebar ? 'Hide Sidebar' : 'Show Sidebar'}
-            </button>
-            <button 
-              className="debug-toggle"
-              onClick={() => setShowDebug(!showDebug)}
-            >
-              {showDebug ? 'Hide Debug' : 'Show Debug'}
-            </button>
           </nav>
         </div>
       </header>
-      
-      {showDebug && <TestMessages />}
       
       <div className={`app-content ${showSidebar ? 'with-sidebar' : ''}`}>
         {showSidebar && (
@@ -258,6 +284,7 @@ function App() {
             selectedInstanceId={selectedInstanceId}
             onSelectInstance={handleSelectInstance}
             onCreateInstance={handleCreateInstance}
+            onToggleSidebar={handleToggleSidebar}
             flowConfigs={flowConfigs}
             flowInstances={flowInstances}
             loading={configsLoading || instancesLoading}

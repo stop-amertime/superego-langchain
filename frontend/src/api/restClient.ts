@@ -61,63 +61,63 @@ export interface ApiResponse<T = any> {
  * API client for constitutions
  */
 export const constitutionsApi = {
-    getAll: () => api.get<ApiResponse<Constitution[]>>('/api/constitutions'),
-    getById: (id: string) => api.get<ApiResponse<Constitution>>(`/api/constitutions/${id}`),
-    create: (constitution: Constitution) => api.post<ApiResponse<Constitution>>('/api/constitutions', constitution),
-    update: (id: string, constitution: Partial<Constitution>) => api.put<ApiResponse<Constitution>>(`/api/constitutions/${id}`, constitution),
-    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/constitutions/${id}`),
+    getAll: () => api.get<ApiResponse<Constitution[]>>('/api/constitutions/'),
+    getById: (id: string) => api.get<ApiResponse<Constitution>>(`/api/constitutions/${id}/`),
+    create: (constitution: Constitution) => api.post<ApiResponse<Constitution>>('/api/constitutions/', constitution),
+    update: (id: string, constitution: Partial<Constitution>) => api.put<ApiResponse<Constitution>>(`/api/constitutions/${id}/`, constitution),
+    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/constitutions/${id}/`),
 };
 
 /**
  * API client for system prompts
  */
 export const syspromptsApi = {
-    getAll: () => api.get<ApiResponse<Sysprompt[]>>('/api/sysprompts'),
-    getById: (id: string) => api.get<ApiResponse<Sysprompt>>(`/api/sysprompts/${id}`),
-    create: (sysprompt: Sysprompt) => api.post<ApiResponse<Sysprompt>>('/api/sysprompts', sysprompt),
-    update: (id: string, sysprompt: Partial<Sysprompt>) => api.put<ApiResponse<Sysprompt>>(`/api/sysprompts/${id}`, sysprompt),
-    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/sysprompts/${id}`),
+    getAll: () => api.get<ApiResponse<Sysprompt[]>>('/api/sysprompts/'),
+    getById: (id: string) => api.get<ApiResponse<Sysprompt>>(`/api/sysprompts/${id}/`),
+    create: (sysprompt: Sysprompt) => api.post<ApiResponse<Sysprompt>>('/api/sysprompts/', sysprompt),
+    update: (id: string, sysprompt: Partial<Sysprompt>) => api.put<ApiResponse<Sysprompt>>(`/api/sysprompts/${id}/`, sysprompt),
+    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/sysprompts/${id}/`),
 };
 
 /**
  * API client for flow configurations
  */
 export const flowConfigsApi = {
-    getAll: () => api.get<ApiResponse<FlowConfig[]>>('/api/flow-configs'),
-    getById: (id: string) => api.get<ApiResponse<FlowConfig>>(`/api/flow-configs/${id}`),
+    getAll: () => api.get<ApiResponse<FlowConfig[]>>('/api/flow-configs/'),
+    getById: (id: string) => api.get<ApiResponse<FlowConfig>>(`/api/flow-configs/${id}/`),
     create: (config: Omit<FlowConfig, 'id' | 'created_at' | 'updated_at'>) => 
-        api.post<ApiResponse<FlowConfig>>('/api/flow-configs', config),
+        api.post<ApiResponse<FlowConfig>>('/api/flow-configs/', config),
     update: (id: string, config: Partial<FlowConfig>) => 
-        api.put<ApiResponse<FlowConfig>>(`/api/flow-configs/${id}`, config),
-    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-configs/${id}`),
+        api.put<ApiResponse<FlowConfig>>(`/api/flow-configs/${id}/`, config),
+    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-configs/${id}/`),
 };
 
 /**
  * API client for flow templates
  */
 export const flowTemplatesApi = {
-    getAll: () => api.get<ApiResponse<FlowTemplate[]>>('/api/flow-templates'),
-    getById: (id: string) => api.get<ApiResponse<FlowTemplate>>(`/api/flow-templates/${id}`),
+    getAll: () => api.get<ApiResponse<FlowTemplate[]>>('/api/flow-templates/'),
+    getById: (id: string) => api.get<ApiResponse<FlowTemplate>>(`/api/flow-templates/${id}/`),
     create: (template: Omit<FlowTemplate, 'id' | 'created_at' | 'updated_at'>) => 
-        api.post<ApiResponse<FlowTemplate>>('/api/flow-templates', template),
+        api.post<ApiResponse<FlowTemplate>>('/api/flow-templates/', template),
     update: (id: string, template: Partial<FlowTemplate>) => 
-        api.put<ApiResponse<FlowTemplate>>(`/api/flow-templates/${id}`, template),
-    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-templates/${id}`),
+        api.put<ApiResponse<FlowTemplate>>(`/api/flow-templates/${id}/`, template),
+    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-templates/${id}/`),
 };
 
 /**
  * API client for flow instances
  */
 export const flowInstancesApi = {
-    getAll: () => api.get<ApiResponse<FlowInstance[]>>('/api/flow-instances'),
-    getById: (id: string) => api.get<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}`),
-    create: (instance: Omit<FlowInstance, 'id' | 'flow_instance_id' | 'created_at' | 'updated_at' | 'last_message_at'>) => 
-        api.post<ApiResponse<FlowInstance>>('/api/flow-instances', instance),
+    getAll: () => api.get<ApiResponse<FlowInstance[]>>('/api/flow-instances/'),
+    getById: (id: string) => api.get<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}/`),
+    create: (instance: {name: string, flow_config_id: string, description?: string}) => 
+        api.post<ApiResponse<FlowInstance>>('/api/flow-instances/', instance),
     update: (id: string, instance: Partial<FlowInstance>) => 
-        api.put<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}`, instance),
-    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-instances/${id}`),
+        api.put<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}/`, instance),
+    delete: (id: string) => api.delete<ApiResponse<void>>(`/api/flow-instances/${id}/`),
     updateLastMessage: (id: string) => 
-        api.post<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}/update-last-message`),
+        api.post<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}/update-last-message/`),
 };
 
 // Export all APIs

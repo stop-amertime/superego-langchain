@@ -99,7 +99,7 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
   // Initialize flow instance ID and WebSocket client reference
   const wsClientRef = useRef<ReturnType<typeof getWebSocketClient> | null>(null);
 
-  // Initialize flow instance ID from props
+  // Initialize flow instance ID from props and fetch conversation history
   useEffect(() => {
     if (propFlowInstanceId) {
       setInternalFlowInstanceId(propFlowInstanceId);
@@ -107,6 +107,13 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
       // Set the flow instance ID in the WebSocket client 
       const wsClient = getWebSocketClient();
       wsClient.setFlowInstanceId(propFlowInstanceId);
+      
+      // Fetch conversation history for this flow instance
+      wsClient.sendCommand('get_conversation_history', {}, propFlowInstanceId);
+      
+      // Don't clear messages immediately - the backend will send a conversation update
+      // that will replace the messages when the history is loaded
+      setSystemMessage('Loading conversation history...');
     }
   }, [propFlowInstanceId]);
 
@@ -161,7 +168,15 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
           
           // Replace all messages in state
           setMessages(convertedMessages);
-          setSystemMessage('Chat updated with rerun results');
+          
+          // Only show "rerun results" message if this is actually from a rerun operation
+          // This is determined by checking if there's a superego message in the data
+          const hasSuperegoMessage = messagesData.some((msg: any) => msg.role === 'superego');
+          if (hasSuperegoMessage) {
+            setSystemMessage('Chat updated with rerun results');
+          } else {
+            setSystemMessage('Conversation loaded');
+          }
         }
       },
       onSuperEgoEvaluation: (evaluation) => {

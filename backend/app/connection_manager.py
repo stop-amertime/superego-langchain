@@ -97,3 +97,6 @@ class ConnectionManager:
         # Clean up disconnected clients
         for client_id in disconnected_clients:
             self.disconnect(client_id)
+
+# Initialize a global connection manager instance
+manager = ConnectionManager()

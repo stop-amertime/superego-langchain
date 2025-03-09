@@ -378,7 +378,7 @@ export const useFlowInstance = (id: string) => {
 export const useCreateFlowInstance = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async (instance: Omit<FlowInstance, 'id' | 'conversation_id' | 'created_at' | 'updated_at' | 'last_message_at'>) => {
+        mutationFn: async (instance: {name: string, flow_config_id: string, description?: string}) => {
             const response = await api_client.flowInstances.create(instance);
             return extractData<FlowInstance>(response.data);
         },

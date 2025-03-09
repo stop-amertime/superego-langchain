@@ -458,6 +458,17 @@ export class WebSocketClient {
       ...callbacks
     };
   }
+  
+  // Method to explicitly request conversation history
+  public requestConversationHistory(conversationId: string): void {
+    if (!conversationId) {
+      console.error('Cannot request conversation history: No conversation ID provided');
+      return;
+    }
+    
+    debugMessageTypes.log('WebSocketClient.requestConversationHistory', `Requesting history for conversation ${conversationId}`);
+    this.sendCommand('get_conversation_history', {}, conversationId);
+  }
 }
 
 // Singleton instance

@@ -96,9 +96,35 @@ class AutoGenAgent(Agent):
         """Process input and return a complete response"""
         logger.info(f"Processing input with AutoGenAgent: {input_text[:50]}...")
         
+        # Log the system prompt and input in a nicely formatted way
+        logger.info("=" * 80)
+        logger.info("AUTOGEN AGENT - PROCESS REQUEST")
+        logger.info("=" * 80)
+        logger.info("SYSTEM PROMPT:")
+        logger.info("-" * 80)
+        logger.info(self.system_prompt)
+        logger.info("-" * 80)
+        logger.info("USER INPUT:")
+        logger.info("-" * 80)
+        logger.info(input_text)
+        logger.info("-" * 80)
+        logger.info("CONTEXT:")
+        logger.info("-" * 80)
+        logger.info(json.dumps(context, indent=2))
+        logger.info("-" * 80)
+        logger.info("=" * 80)
+        
         try:
             # Use the AutoGen agent to process the input
             response = await self.agent.run(task=input_text)
+            
+            # Log the response
+            logger.info("=" * 80)
+            logger.info("AUTOGEN AGENT - PROCESS RESPONSE")
+            logger.info("=" * 80)
+            logger.info(response)
+            logger.info("=" * 80)
+            
             return response
         except Exception as e:
             logger.error(f"Error in AutoGenAgent.process: {str(e)}")
@@ -107,6 +133,24 @@ class AutoGenAgent(Agent):
     async def stream(self, input_text: str, context: Dict[str, Any]) -> AsyncGenerator[str, None]:
         """Stream the response token by token"""
         logger.info(f"Streaming response for input: {input_text[:50]}...")
+        
+        # Log the system prompt and input in a nicely formatted way
+        logger.info("=" * 80)
+        logger.info("AUTOGEN AGENT - STREAM REQUEST")
+        logger.info("=" * 80)
+        logger.info("SYSTEM PROMPT:")
+        logger.info("-" * 80)
+        logger.info(self.system_prompt)
+        logger.info("-" * 80)
+        logger.info("USER INPUT:")
+        logger.info("-" * 80)
+        logger.info(input_text)
+        logger.info("-" * 80)
+        logger.info("CONTEXT:")
+        logger.info("-" * 80)
+        logger.info(json.dumps(context, indent=2))
+        logger.info("-" * 80)
+        logger.info("=" * 80)
         
         # Set running flag
         self._is_running = True

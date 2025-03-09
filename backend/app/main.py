@@ -7,8 +7,9 @@ from typing import Dict, List
 from dotenv import load_dotenv
 
 from .models import Message, WebSocketMessageType, MessageRole, init_models
+from .conversation_manager import get_all_conversations
 from .agents import get_default_constitution
-from .websocket_endpoints import handle_websocket_connection
+from .websocket.core import handle_websocket_connection
 from .api.router import api_router
 
 # Load environment variables
@@ -42,8 +43,8 @@ app.add_middleware(
 # Include the API router
 app.include_router(api_router)
 
-# Store active conversations
-conversations: Dict[str, List[Message]] = {}
+# Get conversations from persistent storage
+conversations = get_all_conversations()
 
 # Initialize models on startup
 @app.on_event("startup")

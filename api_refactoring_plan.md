@@ -1,196 +1,144 @@
-# API Refactoring Plan: Moving from WebSockets to Hybrid REST/WebSocket Architecture
+# WebSocket to REST API Migration Plan
 
-## Current Issues
+## Overview
 
-1. The WebSocket endpoint (`websocket_endpoints.py`) has grown too large and complex
-2. Many operations don't require real-time bidirectional communication
-3. Message type dispatching logic is becoming unwieldy
-4. Error handling is complex
-5. JSON serialization issues with Pydantic models (e.g., FlowConfig)
+This plan outlines the steps to migrate all non-real-time operations from WebSockets to REST APIs in the Superego LangGraph application. After this migration, WebSockets will be used exclusively for real-time streaming operations, while all other operations will use REST APIs.
 
-## Proposed Solution
+## Current Architecture Analysis
 
-Implement a hybrid architecture:
+### Operations that should use WebSockets (real-time streaming):
+- Streaming message tokens during generation
+- Receiving real-time superego evaluations
+- Sending user messages and receiving immediate responses
 
-1. **REST API** for CRUD operations and non-streaming data
-2. **WebSockets** only for real-time streaming operations
+### Operations to migrate to REST APIs (non-real-time):
+- Getting conversation history
+- Getting/creating/updating/deleting flow instances
+- Getting/creating/updating/deleting flow configs
+- Getting/creating/updating/deleting flow templates
+- Getting/creating/updating/deleting constitutions
+- Getting/creating/updating/deleting system prompts
+- Running parallel flows
 
-## Benefits
+## Migration Plan
 
-1. Clearer separation of concerns
-2. More maintainable codebase
-3. Standard REST patterns for data operations
-4. Simplified WebSocket handler focused only on streaming
-5. Easier testing and debugging
-6. Better error handling
+### Phase 1: Backend REST API Development
 
-## Implementation Plan
+1. **Create Conversations API**
+   - Create a new file `backend/app/api/conversations.py`
+   - Implement endpoints for:
+     - Getting conversation history by ID
+     - Updating conversation messages
+     - Deleting conversations
+   - These endpoints will use the existing conversation_manager.py functions
 
-### 1. Create REST API Router Structure
+2. **Update API Router**
+   - Add the new conversations router to `backend/app/api/router.py`
 
-Create a new file `backend/app/api/router.py` with FastAPI routers for:
+3. **Ensure Existing REST APIs are Complete**
+   - Review existing REST APIs for flow instances, flow configs, flow templates, constitutions, and system prompts
+   - Add any missing endpoints or functionality
 
-- Constitutions
-- System Prompts
-- Flow Templates
-- Flow Configs
-- Flow Instances
+### Phase 2: Frontend REST Client Updates
 
-### 2. Implement JSON Serialization Fix
+1. **Add Conversations API Client**
+   - Update `frontend/src/api/restClient.ts` to add methods for:
+     - Getting conversation history
+     - Updating conversations
+     - Deleting conversations
 
-Update the Pydantic models to ensure proper JSON serialization:
+2. **Add React Query Hooks for Conversations**
+   - Update `frontend/src/api/queryHooks.ts` to add hooks for:
+     - Fetching conversation history
+     - Updating conversations
+     - Deleting conversations
 
-1. Add a custom JSON encoder for Pydantic models
-2. Implement model methods for proper serialization
+### Phase 3: Component Updates
 
-### 3. Create REST API Endpoints
+1. **Update Chat Component**
+   - Modify `frontend/src/components/Chat.tsx` to:
+     - Use REST API for fetching conversation history
+     - Use REST API for updating conversations
+     - Keep WebSockets only for real-time message streaming
 
-For each resource type, implement:
+2. **Update InstanceSidebar Component**
+   - Ensure `frontend/src/components/InstanceSidebar.tsx` uses REST API for:
+     - Fetching flow instances
+     - Creating/updating/deleting flow instances
 
-- GET (list all)
-- GET /{id} (get one)
-- POST (create)
-- PUT /{id} (update)
-- DELETE /{id} (delete)
+3. **Update ConstitutionManager Component**
+   - Ensure `frontend/src/components/ConstitutionManager.tsx` uses REST API for:
+     - Fetching constitutions
+     - Creating/updating/deleting constitutions
 
-### 4. Simplify WebSocket Handler
+4. **Update SyspromptSelector Component**
+   - Ensure `frontend/src/components/SyspromptSelector.tsx` uses REST API for:
+     - Fetching system prompts
+     - Creating/updating/deleting system prompts
 
-Refactor `websocket_endpoints.py` to focus only on:
+5. **Update ParallelFlowsView Component**
+   - Modify `frontend/src/components/ParallelFlowsView.tsx` to:
+     - Use REST API for fetching flow configs
+     - Keep WebSockets only for real-time message streaming
 
-- User message processing
-- Streaming LLM responses
-- Streaming superego thinking
-- Real-time notifications
+### Phase 4: WebSocket Client Simplification
 
-### 5. Update Frontend API Client
+1. **Simplify WebSocketClient**
+   - Update `frontend/src/api/websocketClient.ts` to:
+     - Remove methods for non-real-time operations
+     - Focus exclusively on real-time streaming operations
 
-Create a new REST API client in the frontend and update the WebSocket client to handle only streaming operations.
+2. **Update WebSocket Message Handlers**
+   - Remove handlers for operations migrated to REST API from:
+     - `backend/app/websocket_endpoints.py`
+     - `backend/app/websocket/message_handlers/flow.py`
+     - `backend/app/websocket/message_handlers/user_messages.py`
 
-### 6. Update Frontend Components
+### Phase 5: Testing and Validation
 
-Update components to use the appropriate API client based on the operation.
+1. **Test REST API Endpoints**
+   - Test each new and existing REST endpoint
+   - Verify correct data retrieval, updates, and error handling
 
-## Detailed Implementation Steps
+2. **Test Frontend Components**
+   - Test each updated component
+   - Verify they correctly use REST APIs for non-real-time operations
+   - Verify they still use WebSockets for real-time operations
 
-### Phase 1: Backend Restructuring
+3. **Test End-to-End Functionality**
+   - Test switching between conversations
+   - Verify messages are properly persisted
+   - Test rerunning messages with different constitutions
 
-1. **Create API Package Structure**
-   ```
-   backend/app/api/
-   ├── __init__.py
-   ├── router.py              # Main router that combines all sub-routers
-   ├── constitutions.py       # Constitution endpoints
-   ├── sysprompts.py          # System prompt endpoints
-   ├── flow_templates.py      # Flow template endpoints
-   ├── flow_configs.py        # Flow config endpoints
-   ├── flow_instances.py      # Flow instance endpoints
-   └── utils.py               # Shared utilities
-   ```
+## Implementation Approach
 
-2. **Fix JSON Serialization**
-   - Update Pydantic models to ensure proper JSON serialization
-   - Add custom JSON encoder if needed
+1. **Incremental Migration**
+   - Implement and test one feature at a time
+   - Start with conversation history, then move to other features
+   - Keep both WebSocket and REST implementations working in parallel during migration
 
-3. **Implement REST Endpoints**
-   - Move CRUD operations from WebSocket handler to REST endpoints
-   - Ensure proper error handling and status codes
+2. **Feature Flags**
+   - Use feature flags to gradually roll out REST API implementations
+   - This allows for easy rollback if issues are discovered
 
-4. **Simplify WebSocket Handler**
-   - Remove all non-streaming operations
-   - Focus on real-time communication only
+3. **Comprehensive Testing**
+   - Test each feature thoroughly after migration
+   - Ensure no functionality is lost during the migration
 
-### Phase 2: Frontend Updates
+## Expected Benefits
 
-1. **Create REST API Client**
-   ```
-   frontend/src/api/
-   ├── restClient.ts          # New REST API client
-   ├── websocketClient.ts     # Simplified WebSocket client
-   └── apiTypes.ts            # Shared API types
-   ```
+1. **Improved Code Organization**
+   - Clear separation between real-time and non-real-time operations
+   - More maintainable codebase
 
-2. **Update Components**
-   - Modify components to use the appropriate client
-   - Update error handling
+2. **Better Performance**
+   - Reduced WebSocket traffic
+   - Ability to leverage browser caching for static or semi-static data
 
-### Phase 3: Testing and Deployment
+3. **Enhanced Reliability**
+   - Fewer potential points of failure
+   - More robust error handling
 
-1. **Test REST Endpoints**
-   - Verify all CRUD operations work correctly
-   - Test error handling
-
-2. **Test WebSocket Streaming**
-   - Verify streaming still works correctly
-   - Test reconnection logic
-
-3. **Deploy and Monitor**
-   - Deploy the updated application
-   - Monitor for any issues
-
-## Specific API Endpoints to Implement
-
-### Constitutions API
-
-```
-GET    /api/constitutions          # List all constitutions
-GET    /api/constitutions/{id}     # Get a specific constitution
-POST   /api/constitutions          # Create a new constitution
-PUT    /api/constitutions/{id}     # Update a constitution
-DELETE /api/constitutions/{id}     # Delete a constitution
-```
-
-### System Prompts API
-
-```
-GET    /api/sysprompts             # List all system prompts
-GET    /api/sysprompts/{id}        # Get a specific system prompt
-POST   /api/sysprompts             # Create a new system prompt
-PUT    /api/sysprompts/{id}        # Update a system prompt
-DELETE /api/sysprompts/{id}        # Delete a system prompt
-```
-
-### Flow Templates API
-
-```
-GET    /api/flow-templates         # List all flow templates
-GET    /api/flow-templates/{id}    # Get a specific flow template
-POST   /api/flow-templates         # Create a new flow template
-PUT    /api/flow-templates/{id}    # Update a flow template
-DELETE /api/flow-templates/{id}    # Delete a flow template
-```
-
-### Flow Configs API
-
-```
-GET    /api/flow-configs           # List all flow configs
-GET    /api/flow-configs/{id}      # Get a specific flow config
-POST   /api/flow-configs           # Create a new flow config
-PUT    /api/flow-configs/{id}      # Update a flow config
-DELETE /api/flow-configs/{id}      # Delete a flow config
-```
-
-### Flow Instances API
-
-```
-GET    /api/flow-instances         # List all flow instances
-GET    /api/flow-instances/{id}    # Get a specific flow instance
-POST   /api/flow-instances         # Create a new flow instance
-PUT    /api/flow-instances/{id}    # Update a flow instance
-DELETE /api/flow-instances/{id}    # Delete a flow instance
-```
-
-## WebSocket Operations to Keep
-
-1. User message processing
-2. Streaming LLM responses (token by token)
-3. Streaming superego thinking
-4. Real-time notifications
-5. Parallel flow execution (which requires streaming)
-
-## Timeline
-
-1. **Phase 1 (Backend Restructuring)**: 2-3 days
-2. **Phase 2 (Frontend Updates)**: 1-2 days
-3. **Phase 3 (Testing and Deployment)**: 1 day
-
-Total estimated time: 4-6 days
+4. **Fixed Issues**
+   - Messages will be properly persisted when switching between conversations
+   - "Chat updated with rerun results" message will appear correctly

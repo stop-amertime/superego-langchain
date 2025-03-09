@@ -61,9 +61,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, appData, onRerun
   // Toggle thinking visibility
   const [showThinking, setShowThinking] = useState(false);
   
-  // Toggle debug information visibility
-  const [showDebug, setShowDebug] = useState(false);
-  
   // Handle rerun with selected constitution and system prompt
   const handleRerun = () => {
     if (onRerun) {
@@ -90,13 +87,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, appData, onRerun
                 {showThinking ? "🧠❌" : "🧠"}
               </button>
             )}
-            <button
-              className="action-button"
-              onClick={() => setShowDebug(!showDebug)}
-              title={showDebug ? "Hide debug data" : "Show debug data"}
-            >
-              {showDebug ? "🐞❌" : "🐞"}
-            </button>
             {(message.role === MessageRole.SUPEREGO || message.role === MessageRole.ASSISTANT) && (
               <button
                 className="action-button rerun-action"
@@ -149,27 +139,6 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, appData, onRerun
         <div className="message-thinking">
           <h4>Thinking Process</h4>
           <pre>{message.thinking}</pre>
-        </div>
-      )}
-      
-      {showDebug && (
-        <div className="message-debug">
-          <h4>Message Details</h4>
-          <pre>
-            {JSON.stringify(
-              {
-                id: message.id,
-                role: message.role,
-                timestamp: message.timestamp,
-                decision: message.decision,
-                thinking: message.thinking,
-                content: message.content,
-                // Add any other fields that might be useful for debugging
-              }, 
-              null, 
-              2
-            )}
-          </pre>
         </div>
       )}
     </div>

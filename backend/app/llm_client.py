@@ -82,7 +82,7 @@ class LLMClient:
         Evaluate user input with the superego agent
         
         Args:
-            user_input: The user message to evaluate
+            user_input: The user input to evaluate
             constitution: The constitution/guidelines for the superego
             messages: Optional conversation history
             on_thinking: Optional callback for thinking content
@@ -91,24 +91,56 @@ class LLMClient:
             SuperegoEvaluation with decision and reasoning
         """
         logger.info(f"Evaluating user input with superego: {user_input[:50]}...")
+        logger.info(f"Using constitution: {constitution[:100]}...")
+        
+        # Load the superego instructions
+        from .agent_instructions import load_instructions
+        instructions_content = load_instructions("input_superego")
+        
+        # Combine instructions and constitution into a single system prompt
+        system_prompt = f"{instructions_content}\n\n## CONSTITUTION:\n\n{constitution}"
         
         # Prepare messages for OpenAI format
-        openai_messages = [{"role": "system", "content": constitution}]
+        openai_messages = [{"role": "system", "content": system_prompt}]
         
         # Add conversation history if provided - only include user messages to prevent loops
         if messages:
             user_messages = [msg for msg in messages if msg.role == MessageRole.USER]
             for msg in user_messages:
                 openai_messages.append({"role": "user", "content": msg.content})
+            logger.info(f"Added {len(user_messages)} user messages from conversation history")
         
-        # Add the current user message
-        openai_messages.append({"role": "user", "content": f"Evaluate this user input: {user_input}"})
+        # Add the current user message - format it according to the instructions
+        evaluation_prompt = f"""
+USER INPUT: {user_input}
+
+Evaluate this input according to your instructions and constitution.
+"""
+        openai_messages.append({"role": "user", "content": evaluation_prompt})
+        
+        # Log the full messages being sent to the API in a nicely formatted way
+        logger.info("=" * 80)
+        logger.info("OPENROUTER API CALL - SUPEREGO EVALUATION")
+        logger.info("=" * 80)
+        logger.info("SYSTEM PROMPT (INSTRUCTIONS + CONSTITUTION):")
+        logger.info("-" * 80)
+        logger.info(system_prompt)
+        logger.info("-" * 80)
+        logger.info("FULL CONVERSATION CONTEXT:")
+        logger.info("-" * 80)
+        for i, msg in enumerate(openai_messages):
+            role = msg["role"].upper()
+            content = msg["content"]
+            logger.info(f"[{i+1}] {role}: {content}")
+        logger.info("-" * 80)
+        logger.info("=" * 80)
         
         # Thinking storage
         thinking_content = ""
         
         try:
             # Stream the superego response
+            logger.info(f"Making API request to model: {SUPEREGO_MODEL}")
             stream = await self.client.chat.completions.create(
                 model=SUPEREGO_MODEL,
                 messages=openai_messages,
@@ -119,6 +151,7 @@ class LLMClient:
                     "X-Title": "Superego LangGraph"
                 }
             )
+            logger.info("API request sent, awaiting response stream")
             
             full_response = ""
             
@@ -199,23 +232,31 @@ class LLMClient:
             Tokens from the LLM response
         """
         logger.info(f"Streaming LLM response for: {user_input[:50]}...")
+        logger.info(f"Using sysprompt_id: {sysprompt_id}")
         
         # Get the system prompt content
         if sysprompt_id and sysprompt_id in ALL_SYSPROMPTS:
             system_message = ALL_SYSPROMPTS[sysprompt_id]["content"]
+            logger.info(f"Found system prompt with ID {sysprompt_id}: {system_message[:100]}...")
         else:
             system_message = get_default_sysprompt()
+            logger.info(f"Using default system prompt: {system_message[:100]}...")
             
         # If we have a superego evaluation, include it in the system message
         if superego_evaluation:
+            logger.info(f"Including superego evaluation with decision: {superego_evaluation.decision.value}")
             system_message += f"\n\nThe Superego has evaluated the current user request with this decision: {superego_evaluation.decision.value}."
             system_message += f"\n\nSuperego reasoning: {superego_evaluation.reason}"
             
             # Add specific instructions based on superego decision
             if superego_evaluation.decision == SuperegoDecision.BLOCK:
                 system_message += "\n\nThis request has been BLOCKED. You must politely decline to fulfill this request and explain why it cannot be fulfilled."
+                logger.info("Added BLOCK instructions to system message")
             elif superego_evaluation.decision == SuperegoDecision.CAUTION:
                 system_message += "\n\nThis request has been CAUTIONED. You may fulfill this request, but take extra care to ensure your response is safe, ethical, and helpful."
+                logger.info("Added CAUTION instructions to system message")
+        else:
+            logger.info("No superego evaluation provided")
         
         # Prepare messages for OpenAI format
         openai_messages = [{"role": "system", "content": system_message}]
@@ -224,9 +265,28 @@ class LLMClient:
         user_messages = [msg for msg in messages if msg.role == MessageRole.USER]
         for msg in user_messages:
             openai_messages.append({"role": "user", "content": msg.content})
+        logger.info(f"Added {len(user_messages)} user messages from conversation history")
+        
+        # Log the full messages being sent to the API in a nicely formatted way
+        logger.info("=" * 80)
+        logger.info("OPENROUTER API CALL - LLM RESPONSE")
+        logger.info("=" * 80)
+        logger.info("SYSTEM PROMPT:")
+        logger.info("-" * 80)
+        logger.info(system_message)
+        logger.info("-" * 80)
+        logger.info("FULL CONVERSATION CONTEXT:")
+        logger.info("-" * 80)
+        for i, msg in enumerate(openai_messages):
+            role = msg["role"].upper()
+            content = msg["content"]
+            logger.info(f"[{i+1}] {role}: {content}")
+        logger.info("-" * 80)
+        logger.info("=" * 80)
         
         try:
             # Stream the LLM response
+            logger.info(f"Making API request to model: {BASE_MODEL}")
             stream = await self.client.chat.completions.create(
                 model=BASE_MODEL,
                 messages=openai_messages,
@@ -236,6 +296,7 @@ class LLMClient:
                     "X-Title": "Superego LangGraph"
                 }
             )
+            logger.info("API request sent, awaiting response stream")
             
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:

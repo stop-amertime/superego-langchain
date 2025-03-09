@@ -11,6 +11,7 @@ from .agents import get_all_constitutions, save_constitution
 from .llm_client import get_all_sysprompts, save_sysprompt
 from .connection_manager import ConnectionManager
 from .graph import run_graph, rerun_from_checkpoint, filter_user_messages
+from .conversation_manager import get_conversation, update_conversation
 from .flow_manager import (
     get_all_flow_templates, get_all_flow_configs, get_all_flow_instances,
     get_flow_template, get_flow_config, get_flow_instance,
@@ -75,7 +76,7 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
     Args:
         websocket: The WebSocket connection
         client_id: The client's unique ID
-        conversations: Dictionary of conversations
+        conversations: Dictionary of conversations (used only as in-memory cache)
     """
     if not client_id:
         client_id = str(uuid.uuid4())
@@ -203,9 +204,10 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         elif msg.role == MessageRole.ASSISTANT:
                             assistant_message = msg
                     
-                    # Update conversation storage
+                    # Update conversation storage in memory and on disk
                     conversations[conversation_id] = updated_messages
                     messages = updated_messages
+                    update_conversation(conversation_id, updated_messages)
                     
                     # Send the superego evaluation result
                     if superego_message:
@@ -452,9 +454,10 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         if new_assistant_message:
                             final_messages.append(new_assistant_message)
                         
-                        # Update conversation storage with the combined messages
+                        # Update conversation storage with the combined messages in memory and on disk
                         conversations[conversation_id] = final_messages
                         messages = final_messages
+                        update_conversation(conversation_id, final_messages)
                         
                         # Send a message to replace the entire conversation in the frontend
                         await manager.send_message(
@@ -484,9 +487,10 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                             elif msg.role == MessageRole.ASSISTANT:
                                 assistant_message = msg
                         
-                        # Update conversation storage
-                        conversations[conversation_id] = updated_messages
-                        messages = updated_messages
+                    # Update conversation storage in memory and on disk
+                    conversations[conversation_id] = updated_messages
+                    messages = updated_messages
+                    update_conversation(conversation_id, updated_messages)
                     
                     # Send the superego evaluation result
                     if superego_message:
@@ -640,9 +644,10 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                             client_id
                         )
                     
-                    # Update conversation storage
+                    # Update conversation storage in memory and on disk
                     conversations[conversation_id] = updated_messages
                     messages = updated_messages
+                    update_conversation(conversation_id, updated_messages)
                     
                     logger.info(f"Updated conversation with {len(updated_messages)} messages")
                     
@@ -676,10 +681,12 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                 elif message_type == "get_flow_templates":
                     # Return available flow templates
                     templates = get_all_flow_templates()
+                    # Convert templates to dictionaries for JSON serialization
+                    serialized_templates = [template.dict() for template in templates.values()]
                     await manager.send_message(
                         {
                             "type": WebSocketMessageType.FLOW_TEMPLATES_RESPONSE,
-                            "content": list(templates.values()),
+                            "content": serialized_templates,
                             "timestamp": datetime.now().isoformat()
                         }, 
                         client_id
@@ -688,10 +695,12 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                 elif message_type == "get_flow_configs":
                     # Return available flow configurations
                     configs = get_all_flow_configs()
+                    # Convert configs to dictionaries for JSON serialization
+                    serialized_configs = [config.dict() for config in configs.values()]
                     await manager.send_message(
                         {
                             "type": WebSocketMessageType.FLOW_CONFIGS_RESPONSE,
-                            "content": list(configs.values()),
+                            "content": serialized_configs,
                             "timestamp": datetime.now().isoformat()
                         }, 
                         client_id
@@ -700,12 +709,50 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                 elif message_type == "get_flow_instances":
                     # Return available flow instances
                     instances = get_all_flow_instances()
+                    # Convert instances to dictionaries for JSON serialization
+                    serialized_instances = [instance.dict() for instance in instances.values()]
                     await manager.send_message(
                         {
                             "type": WebSocketMessageType.FLOW_INSTANCES_RESPONSE,
-                            "content": list(instances.values()),
+                            "content": serialized_instances,
                             "timestamp": datetime.now().isoformat()
                         }, 
+                        client_id
+                    )
+                
+                elif message_type == "get_conversation_history":
+                    # Return conversation history for the current flow instance
+                    conversation_id = request_data.get("flow_instance_id") or request_data.get("conversation_id")
+                    
+                    if not conversation_id:
+                        await manager.send_message(
+                            {
+                                "type": WebSocketMessageType.ERROR,
+                                "content": "Missing flow instance ID or conversation ID",
+                                "timestamp": datetime.now().isoformat()
+                            }, 
+                            client_id
+                        )
+                        continue
+                    
+                    # Get the conversation history from persistent storage
+                    history = get_conversation(conversation_id)
+                    
+                    # Update the in-memory cache
+                    conversations[conversation_id] = history
+                    messages = history  # Update the current messages variable too
+                    
+                    # Send the conversation history as a conversation update
+                    await manager.send_message(
+                        {
+                            "type": WebSocketMessageType.CONVERSATION_UPDATE,
+                            "content": {
+                                "messages": [msg.dict() for msg in history],
+                                "replace": True
+                            },
+                            "conversation_id": conversation_id,
+                            "timestamp": datetime.now().isoformat()
+                        },
                         client_id
                     )
                 
@@ -774,33 +821,6 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         }, 
                         client_id
                     )
-                
-                elif message_type == "create_flow_config":
-                    # Create a new flow configuration
-                    if not all(k in request_data for k in ["name"]):
-                        raise ValueError("Missing required fields for flow config (name)")
-                    
-                    config = create_flow_config(
-                        name=request_data.get("name"),
-                        constitution_id=request_data.get("constitution_id", "default"),
-                        sysprompt_id=request_data.get("sysprompt_id", "assistant_default"),
-                        superego_enabled=request_data.get("superego_enabled", True),
-                        description=request_data.get("description")
-                    )
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": True,
-                                "message": f"Flow configuration created: {config.name}",
-                                "config": config.dict()
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
                 elif message_type == "create_flow_instance":
                     # Create a new flow instance
                     if not all(k in request_data for k in ["flow_config_id", "name"]):
