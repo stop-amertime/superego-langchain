@@ -280,7 +280,8 @@ def create_flow_instance(
 ) -> FlowInstance:
     """Create a new flow instance."""
     instance_id = str(uuid.uuid4())
-    message_store_id = str(uuid.uuid4())
+    # Use the instance's own ID as the message store ID
+    message_store_id = instance_id
     instance = FlowInstance(
         id=instance_id,
         flow_config_id=flow_config_id,
@@ -403,7 +404,6 @@ def delete_flow_instance(instance_id: str) -> bool:
         save_flow_instances()
         return True
     return False
-
 
 def update_flow_instance_last_message(instance_id: str) -> bool:
     """Update the last_message_at timestamp for a flow instance."""

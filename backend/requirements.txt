@@ -5,7 +5,8 @@ python-dotenv==1.0.0
 openai>=1.24.0,<2.0.0
 langchain-core>=0.2.11,<0.3
 langgraph==0.1.6
-pydantic==2.6.0
+pydantic>=2.10.0,<3.0.0
+protobuf~=5.29.3
 autogen-core>=0.4.0,<0.5.0
 autogen-agentchat>=0.4.0,<0.5.0
 autogen-ext>=0.4.0,<0.5.0
