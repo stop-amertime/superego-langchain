@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from .models import Message, WebSocketMessageType, MessageRole, init_models
 from .conversation_manager import get_all_conversations
 from .agents import get_default_constitution
-from .websocket.core import handle_websocket_connection
+from .websocket_endpoints import handle_websocket_connection
 from .api.router import api_router
 
 # Load environment variables
@@ -74,28 +74,6 @@ async def api_status():
             "has_api_key": api_ready
         }
     }
-
-# Get constitution endpoint
-@app.get("/constitution")
-async def get_constitution():
-    """Get the default constitution content"""
-    return {"constitution": get_default_constitution()}
-
-# Create or update conversation endpoint
-@app.post("/conversations")
-async def create_conversation():
-    """Create a new conversation"""
-    conversation_id = str(uuid.uuid4())
-    conversations[conversation_id] = []
-    return {"conversation_id": conversation_id, "message": "Conversation created"}
-
-# Get conversation endpoint
-@app.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str):
-    """Get a conversation by ID"""
-    if conversation_id not in conversations:
-        raise HTTPException(status_code=404, detail="Conversation not found")
-    return {"conversation_id": conversation_id, "messages": conversations[conversation_id]}
 
 # WebSocket endpoint
 @app.websocket("/ws/{client_id}")

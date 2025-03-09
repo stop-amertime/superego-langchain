@@ -6,20 +6,11 @@ from typing import List, Dict, Any, Optional, Callable
 from datetime import datetime
 from fastapi import WebSocket, WebSocketDisconnect
 
-from .models import Message, WebSocketMessageType, MessageRole, FlowConfig, FlowTemplate, FlowInstance, ParallelFlowResult
-from .agents import get_all_constitutions, save_constitution
-from .llm_client import get_all_sysprompts, save_sysprompt
+from .models import Message, WebSocketMessageType, MessageRole, ParallelFlowResult
 from .connection_manager import ConnectionManager
 from .graph import run_graph, rerun_from_checkpoint, filter_user_messages
 from .conversation_manager import get_conversation, update_conversation
-from .flow_manager import (
-    get_all_flow_templates, get_all_flow_configs, get_all_flow_instances,
-    get_flow_template, get_flow_config, get_flow_instance,
-    create_flow_template, create_flow_config, create_flow_instance,
-    update_flow_template, update_flow_config, update_flow_instance,
-    delete_flow_template, delete_flow_config, delete_flow_instance,
-    run_multiple_flows, update_flow_instance_last_message
-)
+from .flow_manager import run_multiple_flows
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -245,18 +236,6 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         )
                     
                     logger.info(f"Updated conversation with {len(updated_messages)} messages")
-                    
-                elif message_type == "get_constitutions":
-                    # Return available constitutions
-                    constitutions = get_all_constitutions()
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.CONSTITUTIONS_RESPONSE,
-                            "content": list(constitutions.values()),
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
                 
                 elif message_type == "rerun_message":
                     # Rerun a message with potentially different constitution/sysprompt
@@ -280,21 +259,21 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         )
                         continue
                     
-                    if conversation_id not in conversations:
+                    # Get conversation from persistent storage
+                    messages = get_conversation(conversation_id)
+                    if not messages:
                         await manager.send_message(
                             {
                                 "type": WebSocketMessageType.ERROR,
-                                "content": f"Conversation with ID {conversation_id} not found. The session may have expired or the server was restarted.",
+                                "content": f"Conversation with ID {conversation_id} not found.",
                                 "timestamp": datetime.now().isoformat()
                             }, 
                             client_id
                         )
                         continue
                     
-                    messages = conversations.get(conversation_id, [])
-                    
-                    # Get the messages
-                    messages = conversations.get(conversation_id, [])
+                    # Update in-memory cache
+                    conversations[conversation_id] = messages
                     
                     # Try to find a checkpoint associated with this message
                     from .graph import message_checkpoints
@@ -459,20 +438,6 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         messages = final_messages
                         update_conversation(conversation_id, final_messages)
                         
-                        # Send a message to replace the entire conversation in the frontend
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.CONVERSATION_UPDATE,
-                                "content": {
-                                    "messages": [msg.dict() for msg in final_messages],
-                                    "replace": True
-                                },
-                                "conversation_id": conversation_id,
-                                "timestamp": datetime.now().isoformat()
-                            },
-                            client_id
-                        )
-                        
                         # Set these for the individual notifications
                         superego_message = new_superego_message
                         assistant_message = new_assistant_message
@@ -565,6 +530,22 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                             on_thinking=callbacks["on_thinking"]
                         )
                     else:
+                        # Get conversation from persistent storage
+                        messages = get_conversation(conversation_id)
+                        if not messages:
+                            await manager.send_message(
+                                {
+                                    "type": WebSocketMessageType.ERROR,
+                                    "content": f"Conversation with ID {conversation_id} not found.",
+                                    "timestamp": datetime.now().isoformat()
+                                }, 
+                                client_id
+                            )
+                            continue
+                        
+                        # Update in-memory cache
+                        conversations[conversation_id] = messages
+                        
                         # Find last user message and rerun
                         last_user_message = None
                         for message in reversed(messages):
@@ -650,395 +631,6 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                     update_conversation(conversation_id, updated_messages)
                     
                     logger.info(f"Updated conversation with {len(updated_messages)} messages")
-                    
-                elif message_type == "get_system_prompts" or message_type == "get_sysprompts":
-                    # Return available system prompts
-                    sysprompts = get_all_sysprompts()
-                    
-                    if message_type == "get_sysprompts":
-                        # Return in format for dropdown
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSPROMPTS_RESPONSE,
-                                "content": list(sysprompts.values()),
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                    else:
-                        # Backward compatibility format
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "sysprompts": list(sysprompts.values())
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                
-                elif message_type == "get_flow_templates":
-                    # Return available flow templates
-                    templates = get_all_flow_templates()
-                    # Convert templates to dictionaries for JSON serialization
-                    serialized_templates = [template.dict() for template in templates.values()]
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.FLOW_TEMPLATES_RESPONSE,
-                            "content": serialized_templates,
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "get_flow_configs":
-                    # Return available flow configurations
-                    configs = get_all_flow_configs()
-                    # Convert configs to dictionaries for JSON serialization
-                    serialized_configs = [config.dict() for config in configs.values()]
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.FLOW_CONFIGS_RESPONSE,
-                            "content": serialized_configs,
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "get_flow_instances":
-                    # Return available flow instances
-                    instances = get_all_flow_instances()
-                    # Convert instances to dictionaries for JSON serialization
-                    serialized_instances = [instance.dict() for instance in instances.values()]
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.FLOW_INSTANCES_RESPONSE,
-                            "content": serialized_instances,
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "get_conversation_history":
-                    # Return conversation history for the current flow instance
-                    conversation_id = request_data.get("flow_instance_id") or request_data.get("conversation_id")
-                    
-                    if not conversation_id:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.ERROR,
-                                "content": "Missing flow instance ID or conversation ID",
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                        continue
-                    
-                    # Get the conversation history from persistent storage
-                    history = get_conversation(conversation_id)
-                    
-                    # Update the in-memory cache
-                    conversations[conversation_id] = history
-                    messages = history  # Update the current messages variable too
-                    
-                    # Send the conversation history as a conversation update
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.CONVERSATION_UPDATE,
-                            "content": {
-                                "messages": [msg.dict() for msg in history],
-                                "replace": True
-                            },
-                            "conversation_id": conversation_id,
-                            "timestamp": datetime.now().isoformat()
-                        },
-                        client_id
-                    )
-                
-                elif message_type == "get_flow_instance":
-                    # Return a specific flow instance by ID
-                    if "id" not in request_data:
-                        raise ValueError("Missing instance ID")
-                    
-                    instance_id = request_data.get("id")
-                    instance = get_flow_instance(instance_id)
-                    
-                    if instance:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": True,
-                                    "message": f"Found instance: {instance.name}",
-                                    "instance": instance.dict()
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                    else:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.ERROR,
-                                "content": f"Flow instance with ID {instance_id} not found",
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                
-                elif message_type == "create_flow_template":
-                    # Create a new flow template
-                    if not all(k in request_data for k in ["name", "description", "config"]):
-                        raise ValueError("Missing required fields for flow template (name, description, config)")
-                    
-                    config_data = request_data.get("config")
-                    config = FlowConfig(
-                        id=str(uuid.uuid4()),
-                        name=config_data.get("name", request_data.get("name")),
-                        constitution_id=config_data.get("constitution_id", "default"),
-                        sysprompt_id=config_data.get("sysprompt_id", "assistant_default"),
-                        superego_enabled=config_data.get("superego_enabled", True),
-                        description=config_data.get("description", "")
-                    )
-                    
-                    template = create_flow_template(
-                        name=request_data.get("name"),
-                        description=request_data.get("description"),
-                        config=config,
-                        is_default=request_data.get("is_default", False)
-                    )
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": True,
-                                "message": f"Flow template created: {template.name}",
-                                "template": template.dict()
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                elif message_type == "create_flow_instance":
-                    # Create a new flow instance
-                    if not all(k in request_data for k in ["flow_config_id", "name"]):
-                        raise ValueError("Missing required fields for flow instance (flow_config_id, name)")
-                    
-                    instance = create_flow_instance(
-                        flow_config_id=request_data.get("flow_config_id"),
-                        name=request_data.get("name"),
-                        description=request_data.get("description")
-                    )
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": True,
-                                "message": f"Flow instance created: {instance.name}",
-                                "instance": instance.dict()
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "update_flow_template":
-                    # Update a flow template
-                    if "id" not in request_data:
-                        raise ValueError("Missing template ID")
-                    
-                    template_id = request_data.get("id")
-                    name = request_data.get("name")
-                    description = request_data.get("description")
-                    is_default = request_data.get("is_default")
-                    config_data = request_data.get("config")
-                    
-                    config = None
-                    if config_data:
-                        config = FlowConfig(
-                            id=config_data.get("id", str(uuid.uuid4())),
-                            name=config_data.get("name", name if name else ""),
-                            constitution_id=config_data.get("constitution_id", "default"),
-                            sysprompt_id=config_data.get("sysprompt_id", "assistant_default"),
-                            superego_enabled=config_data.get("superego_enabled", True),
-                            description=config_data.get("description", "")
-                        )
-                    
-                    template = update_flow_template(
-                        template_id=template_id,
-                        name=name,
-                        description=description,
-                        config=config,
-                        is_default=is_default
-                    )
-                    
-                    if template:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": True,
-                                    "message": f"Flow template updated: {template.name}",
-                                    "template": template.dict()
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                    else:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.ERROR,
-                                "content": f"Flow template with ID {template_id} not found",
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                
-                elif message_type == "update_flow_config":
-                    # Update a flow configuration
-                    if "id" not in request_data:
-                        raise ValueError("Missing config ID")
-                    
-                    config_id = request_data.get("id")
-                    name = request_data.get("name")
-                    constitution_id = request_data.get("constitution_id")
-                    sysprompt_id = request_data.get("sysprompt_id")
-                    superego_enabled = request_data.get("superego_enabled")
-                    description = request_data.get("description")
-                    
-                    config = update_flow_config(
-                        config_id=config_id,
-                        name=name,
-                        constitution_id=constitution_id,
-                        sysprompt_id=sysprompt_id,
-                        superego_enabled=superego_enabled,
-                        description=description
-                    )
-                    
-                    if config:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": True,
-                                    "message": f"Flow configuration updated: {config.name}",
-                                    "config": config.dict()
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                    else:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.ERROR,
-                                "content": f"Flow configuration with ID {config_id} not found",
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                
-                elif message_type == "update_flow_instance":
-                    # Update a flow instance
-                    if "id" not in request_data:
-                        raise ValueError("Missing instance ID")
-                    
-                    instance_id = request_data.get("id")
-                    name = request_data.get("name")
-                    description = request_data.get("description")
-                    
-                    instance = update_flow_instance(
-                        instance_id=instance_id,
-                        name=name,
-                        description=description
-                    )
-                    
-                    if instance:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": True,
-                                    "message": f"Flow instance updated: {instance.name}",
-                                    "instance": instance.dict()
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                    else:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.ERROR,
-                                "content": f"Flow instance with ID {instance_id} not found",
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                
-                elif message_type == "delete_flow_template":
-                    # Delete a flow template
-                    if "id" not in request_data:
-                        raise ValueError("Missing template ID")
-                    
-                    template_id = request_data.get("id")
-                    success = delete_flow_template(template_id)
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Flow template {'deleted' if success else 'not found'}: {template_id}"
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "delete_flow_config":
-                    # Delete a flow configuration
-                    if "id" not in request_data:
-                        raise ValueError("Missing config ID")
-                    
-                    config_id = request_data.get("id")
-                    success = delete_flow_config(config_id)
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Flow configuration {'deleted' if success else 'not found or in use'}: {config_id}"
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "delete_flow_instance":
-                    # Delete a flow instance
-                    if "id" not in request_data:
-                        raise ValueError("Missing instance ID")
-                    
-                    instance_id = request_data.get("id")
-                    success = delete_flow_instance(instance_id)
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Flow instance {'deleted' if success else 'not found'}: {instance_id}"
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
                 
                 elif message_type == "run_parallel_flows":
                     # Run multiple flows in parallel
@@ -1054,7 +646,11 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                         conversation_id = str(uuid.uuid4())
                         conversations[conversation_id] = []
                     
-                    messages = conversations.get(conversation_id, [])
+                    # Get conversation from persistent storage
+                    messages = get_conversation(conversation_id)
+                    
+                    # Update in-memory cache
+                    conversations[conversation_id] = messages
                     
                     # Get user messages only to prevent loops
                     user_messages = filter_user_messages(messages)
@@ -1121,182 +717,6 @@ async def handle_websocket_connection(websocket: WebSocket, client_id: str, conv
                             "type": WebSocketMessageType.PARALLEL_FLOWS_RESULT,
                             "content": [result.dict() for result in results],
                             "conversation_id": conversation_id,
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "save_constitution" or message_type == "create_constitution":
-                    # Save a new constitution
-                    if not all(k in request_data for k in ["id", "name", "content"]):
-                        raise ValueError("Missing required fields for constitution (id, name, content)")
-                    
-                    constitution_id = request_data.get("id")
-                    name = request_data.get("name")
-                    content = request_data.get("content")
-                    
-                    success = save_constitution(constitution_id, name, content)
-                    
-                    # Get the saved constitution to return to the client
-                    saved_constitution = None
-                    if success:
-                        constitutions = get_all_constitutions()
-                        saved_constitution = constitutions.get(constitution_id)
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Constitution {'saved' if success else 'failed to save'}: {name}",
-                                "constitution": saved_constitution
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                    
-                elif message_type == "update_constitution":
-                    # Update an existing constitution
-                    if "id" not in request_data:
-                        raise ValueError("Missing constitution ID")
-                    
-                    constitution_id = request_data.get("id")
-                    name = request_data.get("name")
-                    content = request_data.get("content")
-                    
-                    # Get the existing constitution
-                    constitutions = get_all_constitutions()
-                    existing_constitution = constitutions.get(constitution_id)
-                    
-                    if not existing_constitution:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": False,
-                                    "message": f"Constitution with ID {constitution_id} not found"
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                        continue
-                    
-                    # Update with new values or keep existing ones
-                    updated_name = name if name is not None else existing_constitution["name"]
-                    updated_content = content if content is not None else existing_constitution["content"]
-                    
-                    success = save_constitution(constitution_id, updated_name, updated_content)
-                    
-                    # Get the updated constitution to return to the client
-                    updated_constitution = None
-                    if success:
-                        constitutions = get_all_constitutions()
-                        updated_constitution = constitutions.get(constitution_id)
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Constitution {'updated' if success else 'failed to update'}: {updated_name}",
-                                "constitution": updated_constitution
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                    
-                elif message_type == "delete_constitution":
-                    # Delete a constitution
-                    if "id" not in request_data:
-                        raise ValueError("Missing constitution ID")
-                    
-                    constitution_id = request_data.get("id")
-                    
-                    # Check if this is a protected constitution
-                    protected_ids = ["default", "none"]
-                    if constitution_id in protected_ids:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": False,
-                                    "message": f"Cannot delete protected constitution: {constitution_id}"
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                        continue
-                    
-                    # Get the constitution name before deleting
-                    constitutions = get_all_constitutions()
-                    constitution = constitutions.get(constitution_id)
-                    
-                    if not constitution:
-                        await manager.send_message(
-                            {
-                                "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                                "content": {
-                                    "success": False,
-                                    "message": f"Constitution with ID {constitution_id} not found"
-                                },
-                                "timestamp": datetime.now().isoformat()
-                            }, 
-                            client_id
-                        )
-                        continue
-                    
-                    constitution_name = constitution["name"]
-                    
-                    # Delete the constitution file
-                    import os
-                    from .constitution_registry import CONSTITUTIONS_DIR
-                    
-                    file_path = os.path.join(CONSTITUTIONS_DIR, f"{constitution_id}.md")
-                    
-                    try:
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
-                            success = True
-                        else:
-                            success = False
-                    except Exception as e:
-                        logger.error(f"Error deleting constitution file: {str(e)}")
-                        success = False
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"Constitution {'deleted' if success else 'failed to delete'}: {constitution_name}"
-                            },
-                            "timestamp": datetime.now().isoformat()
-                        }, 
-                        client_id
-                    )
-                
-                elif message_type == "save_system_prompt":
-                    # Save a new system prompt
-                    if not all(k in request_data for k in ["id", "name", "content"]):
-                        raise ValueError("Missing required fields for system prompt (id, name, content)")
-                    
-                    success = save_sysprompt(
-                        request_data.get("id"),
-                        request_data.get("name"),
-                        request_data.get("content")
-                    )
-                    
-                    await manager.send_message(
-                        {
-                            "type": WebSocketMessageType.SYSTEM_MESSAGE,
-                            "content": {
-                                "success": success,
-                                "message": f"System prompt {'saved' if success else 'failed to save'}: {request_data.get('name')}"
-                            },
                             "timestamp": datetime.now().isoformat()
                         }, 
                         client_id
