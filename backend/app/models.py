@@ -75,6 +75,15 @@ class WebSocketMessageType(str, Enum):
     FLOW_CONFIGS_RESPONSE = "flow_configs_response"  # Response with flow configurations
     FLOW_INSTANCES_RESPONSE = "flow_instances_response"  # Response with flow instances
     PARALLEL_FLOWS_RESULT = "parallel_flows_result"  # Result from running multiple flows
+    
+    # New flow-related message types
+    FLOW_STATE_UPDATE = "flow_state_update"  # Update on flow state changes
+    FLOW_NODE_TRANSITION = "flow_node_transition"  # When flow transitions between nodes
+    FLOW_NODE_THINKING = "flow_node_thinking"  # Thinking output from a node
+    FLOW_NODE_OUTPUT = "flow_node_output"  # Output from a node
+    FLOW_DEFINITION_RESPONSE = "flow_definition_response"  # Response with flow definitions
+    FLOW_COMPLETED = "flow_completed"  # When a flow completes
+    FLOW_ERROR = "flow_error"  # When a flow encounters an error
 
 
 class WebSocketMessage(BaseModel):
@@ -83,7 +92,65 @@ class WebSocketMessage(BaseModel):
     timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
+# Flow status enum
+class FlowStatus(str, Enum):
+    """Status of a flow instance."""
+    CREATED = "created"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+# Tool usage record
+class ToolUsage(BaseModel):
+    """Record of a tool usage."""
+    tool_name: str
+    input_data: Dict[str, Any]
+    output: Any
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+# Node execution record
+class NodeExecution(BaseModel):
+    """Record of a node execution."""
+    node_id: str
+    input: Any
+    output: Any
+    timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
 # Flow-related models
+class NodeConfig(BaseModel):
+    """Configuration for a node in a flow."""
+    type: str
+    config: Dict[str, Any] = {}
+
+
+class EdgeConfig(BaseModel):
+    """Configuration for an edge in a flow."""
+    from_node: str
+    to_node: str
+    condition: Optional[str] = None
+
+
+class FlowDefinition(BaseModel):
+    """Definition of a flow."""
+    id: str
+    name: str
+    description: Optional[str] = None
+    nodes: Dict[str, NodeConfig]
+    edges: List[EdgeConfig]
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    
+    class Config:
+        """Pydantic model configuration."""
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
+
+
 class FlowConfig(BaseModel):
     """Configuration for a flow execution."""
     id: str
@@ -120,12 +187,18 @@ class FlowTemplate(BaseModel):
 
 
 class FlowInstance(BaseModel):
-    """An instance of a flow with its own message history."""
+    """An instance of a flow with its own state and history."""
     id: str
-    flow_config_id: str
-    message_store_id: str
+    flow_definition_id: str
+    current_node: Optional[str] = None
+    status: FlowStatus = FlowStatus.CREATED
     name: str
     description: Optional[str] = None
+    messages: List[Message] = []
+    history: List[NodeExecution] = []
+    agent_states: Dict[str, Dict[str, Any]] = {}
+    tool_usages: List[ToolUsage] = []
+    parameters: Dict[str, Dict[str, Any]] = {}
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     last_message_at: Optional[str] = None

@@ -436,31 +436,54 @@ async def run_multiple_flows(
         
         # Run the flow with this configuration
         try:
-            flow_result = await run_graph(
-                user_input=user_input,
-                conversation_id=conversation_id,
-                messages=messages,
-                constitution_id=config.constitution_id,
-                sysprompt_id=config.sysprompt_id,
-                skip_superego=not config.superego_enabled,
-                on_token=on_token.get(config_id) if on_token else None,
-                on_thinking=on_thinking.get(config_id) if on_thinking else None
-            )
+            # Create a flow instance with this configuration
+            flow_config = {
+                "constitution_id": config.constitution_id,
+                "sysprompt_id": config.sysprompt_id,
+                "skip_superego": not config.superego_enabled
+            }
+            
+            from .flow import CommandFlow
+            flow = CommandFlow(flow_config)
+            
+            # Create context for the flow
+            flow_context = {
+                "conversation_id": conversation_id,
+                "messages": messages or [],
+                "on_token": on_token.get(config_id) if on_token else None,
+                "on_thinking": on_thinking.get(config_id) if on_thinking else None
+            }
+            
+            # Process the input
+            flow_result_type, flow_response = await flow.process(user_input, flow_context)
+            
+            # Get the last messages from the flow context
+            # This assumes the flow adds the messages to the context
+            updated_messages = flow_context.get("messages", [])
             
             # Extract superego evaluation and assistant message
             superego_evaluation = None
             assistant_message = None
             
-            for msg in flow_result["messages"]:
+            for msg in updated_messages:
                 if msg.role == "superego":
                     superego_evaluation = SuperegoEvaluation(
-                        decision=msg.decision,
+                        decision=SuperegoDecision(msg.decision) if hasattr(msg, "decision") else SuperegoDecision.ALLOW,
                         reason=msg.content,
-                        thinking=msg.thinking,
-                        constitutionId=msg.constitutionId
+                        thinking=msg.thinking if hasattr(msg, "thinking") else "",
+                        constitutionId=msg.constitutionId if hasattr(msg, "constitutionId") else config.constitution_id
                     )
-                elif msg.role == "assistant":
+                elif msg.role == "assistant" and msg.content == flow_response:
                     assistant_message = msg
+            
+            # If we didn't find the assistant message, create one
+            if not assistant_message and flow_result_type == "success":
+                assistant_message = Message(
+                    id=str(uuid.uuid4()),
+                    role=MessageRole.ASSISTANT,
+                    content=flow_response,
+                    timestamp=datetime.now().isoformat()
+                )
             
             # Create result
             result = ParallelFlowResult(

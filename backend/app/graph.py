@@ -1,175 +1,194 @@
 import uuid
+import os
 import logging
-from typing import Dict, List, Any, Optional, TypedDict, Callable
+from typing import Dict, List, Any, Optional, TypedDict, Callable, Union, Literal
 from datetime import datetime
 
-from langgraph.graph import StateGraph, END
-from pydantic import Field
-
-from .models import Message, MessageRole, SuperegoEvaluation, SuperegoDecision
-from .llm_client import get_llm_client
-from .agents import get_all_constitutions, get_default_constitution
+from langgraph.types import Command
+from .models import Message, MessageRole, SuperegoEvaluation, SuperegoDecision, ToolInput, ToolOutput
+from .tools import get_tool
+from .constitution_registry import ConstitutionRegistry
+from .agents.input_superego import SimpleInputSuperego
+from .agents.assistant import SimpleAssistant
 
 # Set up logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Path to constitutions directory
+CONSTITUTIONS_DIR = os.path.join(os.path.dirname(__file__), "data", "constitutions")
+
+# Initialize the constitution registry
+constitution_registry = ConstitutionRegistry(CONSTITUTIONS_DIR)
+
+# Default constitution ID
+DEFAULT_CONSTITUTION_ID = "default"
+
+# Get all available constitutions
+def get_all_constitutions() -> Dict[str, Dict[str, Any]]:
+    """Get all available constitutions"""
+    return constitution_registry.get_all_constitutions()
+
+# Get a constitution by ID
+def get_constitution(constitution_id: str) -> str:
+    """
+    Get a constitution by ID
+    
+    Args:
+        constitution_id: The ID of the constitution to get
+        
+    Returns:
+        The constitution content
+        
+    Raises:
+        ValueError: If the constitution is not found
+    """
+    constitution = constitution_registry.get_constitution(constitution_id)
+    if not constitution:
+        raise ValueError(f"Constitution not found: {constitution_id}")
+    return constitution["content"]
 
 # Define the state schema
 class GraphState(TypedDict):
-    """State for the LangGraph agent"""
+    """State for the flow system"""
     conversation_id: str
     messages: List[Message]
-    current_user_input: str
+    user_input: str
     constitution_id: str
     sysprompt_id: Optional[str]
     superego_evaluation: Optional[SuperegoEvaluation]
     assistant_response: Optional[str]
-    streaming_handlers: Dict[str, Any]
-    checkpoint_id: Optional[str]
-    processed: bool  # Track if we've already processed this input to prevent loops
+    tools_used: List[Dict[str, Any]]
+    on_token: Optional[Callable[[str], None]]
+    on_thinking: Optional[Callable[[str], None]]
 
-# Store checkpoints for rerunning
-checkpoints: Dict[str, GraphState] = {}
+# Special node names
+START = "START"
+END = "END"
 
-# Store message to checkpoint mapping for easier rerunning
-message_checkpoints: Dict[str, str] = {}
+# Create agent instances
+input_superego = SimpleInputSuperego({
+    "constitution": "default"
+})
+
+assistant = SimpleAssistant({
+    "system_prompt": "You are a helpful AI assistant that can use tools.",
+    "available_tools": ["calculator"]
+})
 
 # Define the superego node
-async def superego_node(state: GraphState) -> GraphState:
-    """Superego evaluation node"""
+async def superego_node(state: GraphState) -> Union[GraphState, Command]:
+    """
+    Superego evaluation node
+    
+    This node evaluates the user input against the constitution and
+    returns a Command object to route the flow based on the evaluation.
+    """
     logger.info("Running superego node")
     
-    # Prevent infinite loops by checking processed flag
-    if state.get("processed", False):
-        logger.info("Input already processed, skipping superego evaluation")
-        return state
-    
-    # Mark as processed immediately
-    state["processed"] = True
-    
     # Extract needed values from state
-    user_input = state["current_user_input"]
+    user_input = state["user_input"]
     messages = state["messages"]
     constitution_id = state["constitution_id"]
-    on_thinking = state["streaming_handlers"].get("on_thinking")
+    on_thinking = state["on_thinking"]
     
     # Get the constitution content
-    constitutions = get_all_constitutions()
-    constitution_content = constitutions.get(constitution_id, {}).get("content") or get_default_constitution()
+    try:
+        constitution_content = get_constitution(constitution_id)
+    except ValueError as e:
+        # If the constitution is not found, raise an error
+        logger.error(f"Error getting constitution: {e}")
+        raise
     
-    # Get the superego evaluation
-    llm_client = get_llm_client()
-    evaluation = await llm_client.get_superego_evaluation(
-        user_input=user_input,
-        constitution=constitution_content,
-        messages=messages,
-        on_thinking=on_thinking
-    )
+    # Update the input superego's constitution
+    input_superego.constitution = constitution_content
     
-    # Add the constitution ID to the evaluation
-    evaluation.constitutionId = constitution_id
-    
-    # Handle error case
-    if evaluation.decision == SuperegoDecision.ERROR:
-        logger.warning("Superego evaluation failed, defaulting to ALLOW")
-        evaluation = SuperegoEvaluation(
-            decision=SuperegoDecision.ALLOW,
-            reason="Evaluation could not be completed, defaulting to ALLOW.",
-            thinking="Thinking process unavailable due to evaluation error."
-        )
-    
-    logger.info(f"Superego evaluation complete: {evaluation.decision}")
-    
-    # Create a checkpoint for this state
-    checkpoint_id = str(uuid.uuid4())
-    checkpoints[checkpoint_id] = state.copy()
-    
-    # Find the user message ID to associate with this checkpoint
-    for msg in state["messages"]:
-        if msg.role == MessageRole.USER and msg.content == state["current_user_input"]:
-            message_checkpoints[msg.id] = checkpoint_id
-            logger.info(f"Associated message {msg.id} with checkpoint {checkpoint_id}")
-            break
-    
-    # Return updated state
-    return {
-        **state,
-        "superego_evaluation": evaluation,
-        "checkpoint_id": checkpoint_id
+    # Create context for the superego
+    context = {
+        "messages": messages,
+        "constitution_id": constitution_id,
+        "on_thinking": on_thinking
     }
+    
+    # Process the input with the superego
+    result = await input_superego.process(user_input, context)
+    
+    # If the result is a Command object, return it
+    if isinstance(result, Command):
+        # Add the superego evaluation to the state
+        if "superego_evaluation" in result.update:
+            state["superego_evaluation"] = result.update["superego_evaluation"]
+            
+            # Create a superego message
+            superego_message = Message(
+                id=str(uuid.uuid4()),
+                role=MessageRole.SUPEREGO,
+                content=result.update["superego_evaluation"].reason,
+                timestamp=datetime.now().isoformat(),
+                decision=result.update["superego_evaluation"].decision.value,
+                thinking=result.update["superego_evaluation"].thinking,
+                constitutionId=constitution_id
+            )
+            
+            # Add the message to the state
+            state["messages"] = state["messages"] + [superego_message]
+        
+        # Return the Command object
+        return result
+    
+    # If the result is not a Command object, return the updated state
+    return state
 
 # Define the assistant node
-async def assistant_node(state: GraphState) -> GraphState:
-    """Assistant response node"""
+async def assistant_node(state: GraphState) -> Union[GraphState, Command]:
+    """
+    Assistant node
+    
+    This node processes the user input and returns a response.
+    It can use tools to help generate the response.
+    """
     logger.info("Running assistant node")
     
     # Extract needed values from state
-    user_input = state["current_user_input"]
+    user_input = state["user_input"]
     messages = state["messages"]
     superego_evaluation = state["superego_evaluation"]
-    sysprompt_id = state["sysprompt_id"]
-    on_token = state["streaming_handlers"].get("on_token")
+    on_token = state["on_token"]
     
-    # Determine the response based on superego decision
-    if superego_evaluation.decision == SuperegoDecision.BLOCK:
-        # For BLOCK decisions, create a blocked response without calling the LLM
-        logger.info("Superego BLOCKED the message. Generating blocked response.")
-        assistant_content = (
-            "I apologize, but I cannot provide a response to that message. " +
-            "Our content review system has determined that it may not be appropriate. " +
-            f"Reason: {superego_evaluation.reason or 'Not specified'}"
-        )
-    else:
-        # For ALLOW or CAUTION, get the LLM response
-        llm_client = get_llm_client()
-        content = ""
-        async for token in llm_client.stream_llm_response(
-            user_input=user_input,
-            messages=messages,
-            superego_evaluation=superego_evaluation,
-            sysprompt_id=sysprompt_id
-        ):
-            content += token
-            
-            # Call the token callback if provided
-            if on_token:
-                await on_token(token)
-        
-        # For CAUTION, add a prefix to the LLM response
-        if superego_evaluation.decision == SuperegoDecision.CAUTION:
-            assistant_content = (
-                "**Note:** I'm providing this information with caution.\n" +
-                f"The content review system flagged potential concerns: {superego_evaluation.reason or 'Unspecified'}\n\n" +
-                content
-            )
-        else:  # ALLOW
-            assistant_content = content
-    
-    # Return updated state
-    return {
-        **state,
-        "assistant_response": assistant_content
+    # Create context for the assistant
+    context = {
+        "messages": messages,
+        "superego_evaluation": superego_evaluation,
+        "on_token": on_token
     }
+    
+    # Check if there's a caution message
+    if superego_evaluation and superego_evaluation.decision == SuperegoDecision.CAUTION:
+        context["caution_message"] = superego_evaluation.reason
+    
+    # Process the input with the assistant
+    response = await assistant.process(user_input, context)
+    
+    # Create an assistant message
+    assistant_message = Message(
+        id=str(uuid.uuid4()),
+        role=MessageRole.ASSISTANT,
+        content=response,
+        timestamp=datetime.now().isoformat()
+    )
+    
+    # Add the message to the state
+    state["messages"] = state["messages"] + [assistant_message]
+    state["assistant_response"] = response
+    
+    # Return a Command to end the flow
+    return Command(
+        goto=END,
+        update=state
+    )
 
-# Create and initialize the graph
-def create_graph():
-    """Create the LangGraph for the superego flow"""
-    builder = StateGraph(GraphState)
-    builder.add_node("superego", superego_node)
-    builder.add_node("assistant", assistant_node)
-    builder.add_edge("superego", "assistant")
-    builder.add_edge("assistant", END)
-    builder.set_entry_point("superego")
-    return builder.compile()
-
-agent_graph = create_graph()
-
-# Helper function to filter messages
-def filter_user_messages(messages: List[Message]) -> List[Message]:
-    """Filter to keep only user messages to prevent loops"""
-    return [msg for msg in messages if msg.role == MessageRole.USER]
-
-# Function to run the graph
-async def run_graph(
+# Function to run the flow
+async def run_flow(
     user_input: str,
     conversation_id: Optional[str] = None,
     messages: Optional[List[Message]] = None,
@@ -177,191 +196,107 @@ async def run_graph(
     sysprompt_id: Optional[str] = None,
     on_token: Optional[Callable[[str], None]] = None,
     on_thinking: Optional[Callable[[str], None]] = None,
-    checkpoint_node: Optional[str] = None,
     skip_superego: bool = False
 ) -> Dict[str, Any]:
-    """Run the graph with the given inputs"""
+    """
+    Run the flow with the given inputs
+    
+    Args:
+        user_input: The user input to process
+        conversation_id: Optional conversation ID
+        messages: Optional list of messages
+        constitution_id: Optional constitution ID
+        sysprompt_id: Optional system prompt ID
+        on_token: Optional callback for tokens
+        on_thinking: Optional callback for thinking
+        skip_superego: Whether to skip the superego evaluation
+        
+    Returns:
+        The result of the flow
+    """
     # Initialize parameters with defaults if not provided
     if conversation_id is None:
         conversation_id = str(uuid.uuid4())
     if messages is None:
         messages = []
     
-    # Filter out superego/assistant messages to prevent loops
-    user_messages = filter_user_messages(messages)
-    
     # Add current user input as a message if not already present
-    if not any(msg.content == user_input for msg in user_messages):
-        user_message = Message(
-            id=str(uuid.uuid4()),
-            role=MessageRole.USER,
-            content=user_input,
-            timestamp=datetime.now().isoformat()
-        )
-        user_messages.append(user_message)
-    
-    # Set up streaming handlers
-    streaming_handlers = {}
-    if on_token:
-        streaming_handlers["on_token"] = on_token
-    if on_thinking:
-        streaming_handlers["on_thinking"] = on_thinking
+    user_message = Message(
+        id=str(uuid.uuid4()),
+        role=MessageRole.USER,
+        content=user_input,
+        timestamp=datetime.now().isoformat()
+    )
+    messages = messages + [user_message]
     
     # Initialize the state
     state: GraphState = {
         "conversation_id": conversation_id,
-        "messages": user_messages,
-        "current_user_input": user_input,
-        "constitution_id": constitution_id or "default",
+        "messages": messages,
+        "user_input": user_input,
+        "constitution_id": constitution_id or DEFAULT_CONSTITUTION_ID,
         "sysprompt_id": sysprompt_id,
         "superego_evaluation": None,
         "assistant_response": None,
-        "streaming_handlers": streaming_handlers,
-        "checkpoint_id": None,
-        "processed": False
+        "tools_used": [],
+        "on_token": on_token,
+        "on_thinking": on_thinking
     }
     
-    # Run the graph
-    config = {}
-    if checkpoint_node:
-        config = {"configurable": {"checkpoint_node": checkpoint_node}}
-    
-    # If skipping superego, set entry point to assistant node directly
+    # Run the flow
     if skip_superego:
-        # Create a "fake" superego evaluation that always allows
+        # Create a superego evaluation that always allows
         state["superego_evaluation"] = SuperegoEvaluation(
             decision=SuperegoDecision.ALLOW,
             reason="Superego evaluation skipped",
             thinking="Superego evaluation was explicitly skipped for this flow.",
             constitutionId=constitution_id
         )
-        # Start from assistant node
-        config["configurable"] = config.get("configurable", {})
-        config["configurable"]["entry_point"] = "assistant"
-    
-    result = await agent_graph.ainvoke(state, config)
-    
-    # Create output messages
-    superego_message = Message(
-        id=str(uuid.uuid4()),
-        role=MessageRole.SUPEREGO,
-        content=result["superego_evaluation"].reason,
-        timestamp=datetime.now().isoformat(),
-        decision=result["superego_evaluation"].decision.value,
-        thinking=result["superego_evaluation"].thinking,
-        constitutionId=result["superego_evaluation"].constitutionId
-    )
-    
-    assistant_message = Message(
-        id=str(uuid.uuid4()),
-        role=MessageRole.ASSISTANT,
-        content=result["assistant_response"],
-        timestamp=datetime.now().isoformat()
-    )
-    
-    # Combine messages
-    updated_messages = user_messages.copy()
-    updated_messages.append(superego_message)
-    updated_messages.append(assistant_message)
-    
-    # Return the result
+        
+        # Run the assistant node directly
+        result = await assistant_node(state)
+    else:
+        # Run the superego node
+        result = await superego_node(state)
+        
+        # If the result is a Command object, follow it
+        if isinstance(result, Command):
+            if result.goto == "assistant":
+                # Update the state with the Command's updates
+                for key, value in result.update.items():
+                    state[key] = value
+                
+                # Run the assistant node
+                result = await assistant_node(state)
+            elif result.goto == END:
+                # End the flow
+                pass
+        
+    # Return the final state
     return {
-        "conversation_id": conversation_id,
-        "messages": updated_messages,
-        "superego_evaluation": result["superego_evaluation"],
-        "assistant_message": assistant_message,
-        "checkpoint_id": result["checkpoint_id"]
+        "conversation_id": state["conversation_id"],
+        "messages": state["messages"],
+        "superego_evaluation": state["superego_evaluation"],
+        "assistant_response": state["assistant_response"],
+        "tools_used": state["tools_used"]
     }
 
-# Function to rerun from a checkpoint
-async def rerun_from_checkpoint(
-    checkpoint_id: str,
-    constitution_id: str,
-    sysprompt_id: Optional[str] = None,
-    on_token: Optional[Callable[[str], None]] = None,
-    on_thinking: Optional[Callable[[str], None]] = None
-) -> Dict[str, Any]:
-    """Rerun the graph from a checkpoint with a different constitution and/or system prompt"""
-    original_checkpoint_id = checkpoint_id
+# Function to process a calculator request
+async def process_calculator_request(expression: str) -> str:
+    """
+    Process a calculator request
     
-    # Check if the ID is a message ID first
-    if checkpoint_id in message_checkpoints:
-        logger.info(f"Found message checkpoint mapping: {checkpoint_id} -> {message_checkpoints[checkpoint_id]}")
-        checkpoint_id = message_checkpoints[checkpoint_id]
-    
-    # Validate checkpoint exists
-    if checkpoint_id not in checkpoints:
-        logger.error(f"Checkpoint {checkpoint_id} not found (original ID: {original_checkpoint_id})")
-        # Check if any checkpoints exist at all
-        if len(checkpoints) == 0:
-            logger.error("No checkpoints exist in the system")
-        else:
-            logger.info(f"Available checkpoint IDs: {list(checkpoints.keys())}")
+    Args:
+        expression: The expression to calculate
         
-        raise ValueError(f"Checkpoint {checkpoint_id} not found. The session may have expired or the server was restarted.")
+    Returns:
+        The result of the calculation
+    """
+    calculator = get_tool("calculator")
+    if not calculator:
+        return "Calculator tool not available"
     
-    # Get the checkpoint and create a fresh state
-    checkpoint = checkpoints[checkpoint_id].copy()
+    tool_input = ToolInput(name="calculator", arguments={"expression": expression})
+    result = await calculator.execute(tool_input.arguments)
     
-    # Create a fresh state with the new constitution
-    fresh_state: GraphState = {
-        "conversation_id": checkpoint["conversation_id"],
-        "messages": checkpoint["messages"].copy(),
-        "current_user_input": checkpoint["current_user_input"],
-        "constitution_id": constitution_id,  # Use the new constitution ID
-        "sysprompt_id": checkpoint["sysprompt_id"],
-        "superego_evaluation": None,  # Reset to force re-evaluation
-        "assistant_response": None,  # Reset to force re-generation
-        "streaming_handlers": {},  # Will update below
-        "checkpoint_id": None,
-        "processed": False  # Reset to ensure processing
-    }
-    
-    # Set up streaming handlers
-    if on_token:
-        fresh_state["streaming_handlers"]["on_token"] = on_token
-    if on_thinking:
-        fresh_state["streaming_handlers"]["on_thinking"] = on_thinking
-    
-    # Copy any other handlers from original checkpoint
-    for key, handler in checkpoint["streaming_handlers"].items():
-        if key not in fresh_state["streaming_handlers"]:
-            fresh_state["streaming_handlers"][key] = handler
-    
-    # Run the graph with the fresh state
-    result = await agent_graph.ainvoke(fresh_state)
-    
-    # Create output messages
-    superego_message = Message(
-        id=str(uuid.uuid4()),
-        role=MessageRole.SUPEREGO,
-        content=result["superego_evaluation"].reason,
-        timestamp=datetime.now().isoformat(),
-        decision=result["superego_evaluation"].decision.value,
-        thinking=result["superego_evaluation"].thinking,
-        constitutionId=result["superego_evaluation"].constitutionId
-    )
-    
-    assistant_message = Message(
-        id=str(uuid.uuid4()),
-        role=MessageRole.ASSISTANT,
-        content=result["assistant_response"],
-        timestamp=datetime.now().isoformat()
-    )
-    
-    # Get user messages from original checkpoint
-    user_messages = filter_user_messages(checkpoint["messages"])
-    
-    # Create updated message list
-    updated_messages = user_messages.copy()
-    updated_messages.append(superego_message)
-    updated_messages.append(assistant_message)
-    
-    # Return the result
-    return {
-        "conversation_id": checkpoint["conversation_id"],
-        "messages": updated_messages,
-        "superego_evaluation": result["superego_evaluation"],
-        "assistant_message": assistant_message,
-        "checkpoint_id": result["checkpoint_id"]
-    }
+    return result
