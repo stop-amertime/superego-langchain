@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from .models import Message, WebSocketMessageType, MessageRole, init_models
 from .conversation_manager import get_all_conversations
 from .agents import get_default_constitution
-from .websocket_endpoints import handle_websocket_connection
+from .websocket_endpoints import router as websocket_router
 from .api.router import api_router
 
 # Load environment variables
@@ -75,13 +75,5 @@ async def api_status():
         }
     }
 
-# WebSocket endpoint
-@app.websocket("/ws/{client_id}")
-async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """WebSocket endpoint for client connections"""
-    try:
-        await handle_websocket_connection(websocket, client_id, conversations)
-    except WebSocketDisconnect:
-        logger.info(f"Client {client_id} disconnected")
-    except Exception as e:
-        logger.error(f"Error handling websocket connection: {e}")
+# Include the WebSocket router
+app.include_router(websocket_router)

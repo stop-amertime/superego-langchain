@@ -1,0 +1,75 @@
+/* FlowChat.css */
+.flow-chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.chat-header-container {
+  flex-shrink: 0;
+}
+
+.flow-messages-container {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+/* Empty state styling */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2rem;
+}
+
+.empty-state p {
+  font-size: 1.1rem;
+  margin-bottom: 1rem;
+}
+
+/* System message styling */
+.system-message {
+  align-self: center;
+  background-color: var(--gray-300);
+  color: var(--text-secondary);
+  padding: 0.5rem 1rem;
+  border-radius: var(--border-radius);
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  max-width: 80%;
+  text-align: center;
+}
+
+/* Vertical flow line */
+.flow-messages-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 20px;
+  width: 2px;
+  background-color: var(--gray-300);
+  z-index: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .flow-messages-container {
+    padding: 0.5rem;
+  }
+  
+  .flow-messages-container::before {
+    left: 15px;
+  }
+}

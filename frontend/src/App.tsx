@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Link } from 'react-router-dom'
 import Chat from './components/Chat.tsx'
+import FlowChat from './components/FlowChat.tsx'
 import TestMessages from './components/TestMessages.tsx'
 import InstanceSidebar from './components/InstanceSidebar'
 import ParallelFlowsView from './components/ParallelFlowsView'
@@ -90,9 +91,8 @@ function App() {
         const flowInstanceId = selectedInstance.message_store_id;
         setCurrentFlowInstanceId(flowInstanceId);
         
-        // Update the WebSocketClient's flow instance ID for future messages
-        const wsClient = getWebSocketClient();
-        wsClient.setFlowInstanceId(flowInstanceId);
+        // No need to update WebSocketClient's flow instance ID anymore
+        // We'll pass it directly with each message
         
         console.log(`Selected instance ${selectedInstanceId} with flow instance ID ${flowInstanceId}`);
       }
@@ -111,9 +111,8 @@ function App() {
       const flowInstanceId = selectedInstance.message_store_id;
       setCurrentFlowInstanceId(flowInstanceId);
       
-      // Update the WebSocketClient's flow instance ID for future messages
-      const wsClient = getWebSocketClient();
-      wsClient.setFlowInstanceId(flowInstanceId);
+      // No need to update WebSocketClient's flow instance ID anymore
+      // We'll pass it directly with each message
       
       console.log(`Selected instance ${instanceId} with flow instance ID ${flowInstanceId}`);
     } else {
@@ -140,8 +139,8 @@ function App() {
       // Set the flow instance ID for WebSocket communication
       if (firstInstance.message_store_id) {
         setCurrentFlowInstanceId(firstInstance.message_store_id);
-        const wsClient = getWebSocketClient();
-        wsClient.setFlowInstanceId(firstInstance.message_store_id);
+        // No need to update WebSocketClient's flow instance ID anymore
+        // We'll pass it directly with each message
       }
       return;
     }
@@ -175,8 +174,8 @@ function App() {
           // Set the flow instance ID for WebSocket communication
           if (data.message_store_id) {
             setCurrentFlowInstanceId(data.message_store_id);
-            const wsClient = getWebSocketClient();
-            wsClient.setFlowInstanceId(data.message_store_id);
+            // No need to update WebSocketClient's flow instance ID anymore
+            // We'll pass it directly with each message
           }
         }
       }
@@ -259,7 +258,7 @@ function App() {
           )}
           
           {appMode === AppMode.CHAT && (
-            <Chat 
+            <FlowChat 
               flowInstanceId={currentFlowInstanceId}
               onUserInputChange={handleUserInputChange}
             />

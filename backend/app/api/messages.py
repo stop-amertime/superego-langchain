@@ -124,7 +124,7 @@ async def create_message_store_endpoint():
 @router.put("/{message_store_id}")
 async def update_messages_endpoint(message_store_id: str, messages: List[dict]):
     """
-    Update a message store with new messages.
+    Update a message store with new messages. If the message store doesn't exist, it will be created.
     
     Args:
         message_store_id: The message store ID
@@ -133,11 +133,20 @@ async def update_messages_endpoint(message_store_id: str, messages: List[dict]):
     Returns:
         Updated message store
     """
+    # Check if the message store exists
+    existing_messages = get_messages(message_store_id)
+    
     # Convert dict messages to Message objects
     message_objects = [Message.parse_obj(msg) for msg in messages]
     
-    # Update the message store
+    # Update the message store (this will create it if it doesn't exist)
     update_messages(message_store_id, message_objects)
+    
+    # Log whether we created a new message store or updated an existing one
+    if not existing_messages:
+        print(f"Created new message store with ID: {message_store_id}")
+    else:
+        print(f"Updated existing message store with ID: {message_store_id}")
     
     return create_response({
         "id": message_store_id,

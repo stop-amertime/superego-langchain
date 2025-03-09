@@ -1,16 +1,9 @@
-"""API endpoints for managing flow instances."""
+"""API endpoints for managing flow instances using flow_engine."""
 from typing import Dict, List, Optional, Any
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel
 
-from ..flow_manager import (
-    get_all_flow_instances, 
-    get_flow_instance, 
-    create_flow_instance, 
-    update_flow_instance, 
-    delete_flow_instance,
-    update_flow_instance_last_message
-)
+from ..flow_engine import get_flow_engine
 from .utils import (
     create_success_response,
     handle_not_found,
@@ -26,8 +19,9 @@ router = APIRouter(prefix="/api/flow-instances", tags=["flow-instances"])
 class FlowInstanceBase(BaseModel):
     """Base model for flow instance data."""
     name: str
-    flow_config_id: str
+    flow_definition_id: str
     description: Optional[str] = None
+    parameters: Optional[Dict[str, Dict[str, Any]]] = None
 
 class FlowInstanceCreate(FlowInstanceBase):
     """Model for creating a new flow instance."""
@@ -41,22 +35,25 @@ class FlowInstanceUpdate(BaseModel):
 class FlowInstanceResponse(FlowInstanceBase):
     """Model for flow instance response."""
     id: str
-    message_store_id: str
     created_at: str
     updated_at: str
     last_message_at: Optional[str] = None
+    status: str
+    current_node: Optional[str] = None
 
 # API endpoints
 @router.get("/", response_model=Dict[str, Any])
 async def get_flow_instances():
     """Get all flow instances."""
-    instances = get_all_flow_instances()
+    flow_engine = get_flow_engine()
+    instances = flow_engine.flow_instances
     return create_success_response(data=list(instances.values()))
 
 @router.get("/{instance_id}", response_model=Dict[str, Any])
 async def get_flow_instance_by_id(instance_id: str):
     """Get a specific flow instance by ID."""
-    instance = get_flow_instance(instance_id)
+    flow_engine = get_flow_engine()
+    instance = flow_engine.get_flow_instance(instance_id)
     if not instance:
         handle_not_found("Flow instance", instance_id)
     
@@ -65,12 +62,18 @@ async def get_flow_instance_by_id(instance_id: str):
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 async def create_new_flow_instance(instance: FlowInstanceCreate):
     """Create a new flow instance."""
+    flow_engine = get_flow_engine()
+    
     # Create the flow instance
-    new_instance = create_flow_instance(
-        flow_config_id=instance.flow_config_id,
+    new_instance = flow_engine.create_flow_instance(
+        definition_id=instance.flow_definition_id,
         name=instance.name,
-        description=instance.description
+        description=instance.description,
+        parameters=instance.parameters
     )
+    
+    if not new_instance:
+        handle_not_found("Flow definition", instance.flow_definition_id)
     
     return create_success_response(
         data=new_instance,
@@ -80,23 +83,24 @@ async def create_new_flow_instance(instance: FlowInstanceCreate):
 @router.put("/{instance_id}", response_model=Dict[str, Any])
 async def update_flow_instance_by_id(instance_id: str, instance: FlowInstanceUpdate):
     """Update an existing flow instance."""
+    flow_engine = get_flow_engine()
+    
     # Check if flow instance exists
-    existing_instance = get_flow_instance(instance_id)
+    existing_instance = flow_engine.get_flow_instance(instance_id)
     if not existing_instance:
         handle_not_found("Flow instance", instance_id)
     
-    # Update the flow instance
-    updated_instance = update_flow_instance(
-        instance_id=instance_id,
-        name=instance.name,
-        description=instance.description
-    )
+    # Update the name and description if provided
+    if instance.name is not None:
+        existing_instance.name = instance.name
+    if instance.description is not None:
+        existing_instance.description = instance.description
     
-    if not updated_instance:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update flow instance"
-        )
+    # Update the instance
+    flow_engine.update_flow_instance(existing_instance)
+    
+    # Get the updated instance
+    updated_instance = flow_engine.get_flow_instance(instance_id)
     
     return create_success_response(
         data=updated_instance,
@@ -106,13 +110,18 @@ async def update_flow_instance_by_id(instance_id: str, instance: FlowInstanceUpd
 @router.delete("/{instance_id}", response_model=Dict[str, Any])
 async def delete_flow_instance_by_id(instance_id: str):
     """Delete a flow instance."""
+    flow_engine = get_flow_engine()
+    
     # Check if flow instance exists
-    existing_instance = get_flow_instance(instance_id)
+    existing_instance = flow_engine.get_flow_instance(instance_id)
     if not existing_instance:
         handle_not_found("Flow instance", instance_id)
     
+    # Store the name for the response message
+    instance_name = existing_instance.name
+    
     # Delete the flow instance
-    success = delete_flow_instance(instance_id)
+    success = flow_engine.delete_flow_instance(instance_id)
     
     if not success:
         raise HTTPException(
@@ -121,30 +130,5 @@ async def delete_flow_instance_by_id(instance_id: str):
         )
     
     return create_success_response(
-        message=f"Flow instance '{existing_instance.name}' deleted successfully"
-    )
-
-@router.post("/{instance_id}/update-last-message", response_model=Dict[str, Any])
-async def update_instance_last_message(instance_id: str):
-    """Update the last_message_at timestamp for a flow instance."""
-    # Check if flow instance exists
-    existing_instance = get_flow_instance(instance_id)
-    if not existing_instance:
-        handle_not_found("Flow instance", instance_id)
-    
-    # Update the last message timestamp
-    success = update_flow_instance_last_message(instance_id)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update last message timestamp"
-        )
-    
-    # Get the updated instance
-    updated_instance = get_flow_instance(instance_id)
-    
-    return create_success_response(
-        data=updated_instance,
-        message=f"Last message timestamp updated for flow instance '{existing_instance.name}'"
+        message=f"Flow instance '{instance_name}' deleted successfully"
     )

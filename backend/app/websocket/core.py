@@ -1,156 +1,183 @@
 """
-Core WebSocket connection handling.
-This module contains the main WebSocket connection handler that delegates
-to specific message handlers based on the message type.
+Core WebSocket functionality.
+
+This module provides the core WebSocket functionality, including the connection manager
+and handler registry.
 """
 
-import asyncio
 import logging
-import uuid
-from typing import Dict, List, Any, Optional
-
+from typing import Dict, Any, Optional, List, Type, Set
+import json
 from fastapi import WebSocket, WebSocketDisconnect
 
-from ..models import Message, WebSocketMessageType
-from ..connection_manager import ConnectionManager
-from ..conversation_manager import get_conversation
-from ..errors import (
-    AppError, InvalidRequestError, MissingParameterError, 
-    WebSocketError, handle_exception, format_websocket_error
-)
-from .utils import parse_message
-
-# Import message handlers (will be implemented in separate files)
-from .message_handlers import user_messages, constitution, flow, system
+from .events import emitter, WebSocketEvents
+from .handlers.base import MessageHandler
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Import the connection manager instance
-from ..connection_manager import manager
-
-async def handle_websocket_connection(websocket: WebSocket, client_id: str, conversations: Dict[str, List[Message]]):
+class ConnectionManager:
     """
-    Handle a WebSocket connection
+    WebSocket connection manager.
     
-    Args:
-        websocket: The WebSocket connection
-        client_id: The client's unique ID
-        conversations: Dictionary of conversations
+    This class manages WebSocket connections and message sending.
     """
-    if not client_id:
-        client_id = str(uuid.uuid4())
     
-    await manager.connect(websocket, client_id)
+    def __init__(self):
+        """Initialize the connection manager."""
+        self.active_connections: Dict[str, WebSocket] = {}
+        self.client_to_flow_instance: Dict[str, str] = {}
+        self.flow_instance_to_clients: Dict[str, Set[str]] = {}
     
-    try:
-        # Small delay to ensure connection is stable
-        await asyncio.sleep(0.2)
+    async def connect(self, websocket: WebSocket, client_id: str) -> None:
+        """
+        Connect a WebSocket client.
         
-        conversation_id = None
-        messages: List[Message] = []
+        Args:
+            websocket: The WebSocket connection
+            client_id: The client's unique ID
+        """
+        await websocket.accept()
+        self.active_connections[client_id] = websocket
+        logger.info(f"Client connected: {client_id}")
         
-        while True:
-            data = await websocket.receive_text()
+        # Emit a connection established event
+        await emitter.emit(
+            WebSocketEvents.CONNECTION_ESTABLISHED,
+            client_id=client_id
+        )
+    
+    async def disconnect(self, client_id: str) -> None:
+        """
+        Disconnect a WebSocket client.
+        
+        Args:
+            client_id: The client's unique ID
+        """
+        if client_id in self.active_connections:
+            # Remove the client from flow instance mappings
+            if client_id in self.client_to_flow_instance:
+                flow_instance_id = self.client_to_flow_instance[client_id]
+                if flow_instance_id in self.flow_instance_to_clients:
+                    self.flow_instance_to_clients[flow_instance_id].remove(client_id)
+                    if not self.flow_instance_to_clients[flow_instance_id]:
+                        del self.flow_instance_to_clients[flow_instance_id]
+                del self.client_to_flow_instance[client_id]
             
+            # Remove the client from active connections
+            del self.active_connections[client_id]
+            logger.info(f"Client disconnected: {client_id}")
+            
+            # Emit a connection closed event
+            await emitter.emit(
+                WebSocketEvents.CONNECTION_CLOSED,
+                client_id=client_id
+            )
+    
+    async def send_message(self, message: Dict[str, Any], client_id: str) -> None:
+        """
+        Send a message to a specific client.
+        
+        Args:
+            message: The message to send
+            client_id: The client's unique ID
+        """
+        if client_id in self.active_connections:
+            websocket = self.active_connections[client_id]
             try:
-                # Parse the message using the utility function
-                request_data = parse_message(data)
-                logger.info(f"Received message from client {client_id}: {request_data}")
+                await websocket.send_json(message)
                 
-                # Extract the message type
-                message_type = request_data.get("type")
-                logger.info(f"Processing message type: {message_type}")
-                
-                # Extract conversation ID
-                conversation_id = request_data.get("conversation_id", conversation_id)
-                
-                # Get messages from persistent storage if conversation_id is available
-                if conversation_id:
-                    messages = get_conversation(conversation_id)
-                
-                # Initialize conversation context
-                context = {
-                    "client_id": client_id,
-                    "conversation_id": conversation_id,
-                    "conversations": conversations,
-                    "messages": messages,
-                    "manager": manager,
-                    "request_data": request_data
-                }
-                
-                # Route to the appropriate message handler based on message type
-                if message_type == "user_message":
-                    # Handle user message
-                    result = await user_messages.handle_user_message(context)
-                    if result:
-                        messages = result.get("messages", messages)
-                        conversation_id = result.get("conversation_id", conversation_id)
-                
-                elif message_type in ["get_constitutions", "save_constitution", "create_constitution", 
-                                     "update_constitution", "delete_constitution"]:
-                    # Handle constitution-related messages
-                    await constitution.handle_constitution_message(message_type, context)
-                
-                elif message_type in ["get_flow_templates", "get_flow_configs", "get_flow_instances",
-                                     "get_flow_instance", "create_flow_template", "create_flow_config",
-                                     "create_flow_instance", "update_flow_template", "update_flow_config",
-                                     "update_flow_instance", "delete_flow_template", "delete_flow_config",
-                                     "delete_flow_instance", "run_parallel_flows", "get_conversation_history"]:
-                    # Handle flow-related messages
-                    result = await flow.handle_flow_message(message_type, context)
-                    if result:
-                        messages = result.get("messages", messages)
-                        conversation_id = result.get("conversation_id", conversation_id)
-                
-                elif message_type in ["get_system_prompts", "get_sysprompts", "save_system_prompt"]:
-                    # Handle system prompt-related messages
-                    await system.handle_system_message(message_type, context)
-                
-                elif message_type in ["rerun_message", "rerun_from_constitution"]:
-                    # Handle message rerun
-                    result = await user_messages.handle_rerun_message(message_type, context)
-                    if result:
-                        messages = result.get("messages", messages)
-                
-                else:
-                    # Unhandled message type
-                    logger.warning(f"Unhandled message type: {message_type}")
-                    error = InvalidRequestError(f"Unhandled message type: {message_type}")
-                    error.log(logging.WARNING)
-                    await manager.send_message(
-                        format_websocket_error(error, conversation_id),
-                        client_id
-                    )
-                
-            except ValueError as e:
-                # Convert ValueError to InvalidRequestError
-                error = InvalidRequestError(str(e))
-                error.log()
-                await manager.send_message(
-                    format_websocket_error(error, conversation_id),
-                    client_id
-                )
-            except AppError as e:
-                # Already an AppError, just log and send
-                e.log()
-                await manager.send_message(
-                    format_websocket_error(e, conversation_id),
-                    client_id
+                # Emit a message sent event
+                await emitter.emit(
+                    WebSocketEvents.MESSAGE_SENT,
+                    client_id=client_id,
+                    message=message
                 )
             except Exception as e:
-                # Convert generic exception to AppError
-                error = handle_exception(e, {"message_type": message_type})
-                await manager.send_message(
-                    format_websocket_error(error, conversation_id),
-                    client_id
-                )
-                
-    except WebSocketDisconnect:
-        logger.info(f"Client {client_id} disconnected")
-        manager.disconnect(client_id)
-    except Exception as e:
-        # Handle unexpected errors in the WebSocket connection
-        error = handle_exception(e, {"client_id": client_id})
-        logger.error(f"Unexpected error in WebSocket connection: {error.message}")
-        manager.disconnect(client_id)
+                logger.error(f"Error sending message to client {client_id}: {e}")
+                await self.disconnect(client_id)
+    
+    async def broadcast(self, message: Dict[str, Any]) -> None:
+        """
+        Broadcast a message to all connected clients.
+        
+        Args:
+            message: The message to broadcast
+        """
+        for client_id in list(self.active_connections.keys()):
+            await self.send_message(message, client_id)
+    
+    async def broadcast_to_flow_instance(
+        self, 
+        message: Dict[str, Any], 
+        flow_instance_id: str
+    ) -> None:
+        """
+        Broadcast a message to all clients connected to a flow instance.
+        
+        Args:
+            message: The message to broadcast
+            flow_instance_id: The flow instance ID
+        """
+        if flow_instance_id in self.flow_instance_to_clients:
+            for client_id in list(self.flow_instance_to_clients[flow_instance_id]):
+                await self.send_message(message, client_id)
+    
+    def associate_client_with_flow_instance(
+        self, 
+        client_id: str, 
+        flow_instance_id: str
+    ) -> None:
+        """
+        Associate a client with a flow instance.
+        
+        Args:
+            client_id: The client's unique ID
+            flow_instance_id: The flow instance ID
+        """
+        self.client_to_flow_instance[client_id] = flow_instance_id
+        if flow_instance_id not in self.flow_instance_to_clients:
+            self.flow_instance_to_clients[flow_instance_id] = set()
+        self.flow_instance_to_clients[flow_instance_id].add(client_id)
+        logger.info(f"Associated client {client_id} with flow instance {flow_instance_id}")
+
+class HandlerRegistry:
+    """
+    Registry for message handlers.
+    
+    This class manages the registration and retrieval of message handlers.
+    """
+    
+    def __init__(self):
+        """Initialize the handler registry."""
+        self.handlers: Dict[str, Type[MessageHandler]] = {}
+    
+    def register(self, message_type: str, handler_class: Type[MessageHandler]) -> None:
+        """
+        Register a handler for a message type.
+        
+        Args:
+            message_type: The message type
+            handler_class: The handler class
+        """
+        self.handlers[message_type] = handler_class
+        logger.info(f"Registered handler for message type: {message_type}")
+    
+    def get_handler(self, message_type: str) -> Optional[MessageHandler]:
+        """
+        Get a handler for a message type.
+        
+        Args:
+            message_type: The message type
+            
+        Returns:
+            A handler instance, or None if not found
+        """
+        handler_class = self.handlers.get(message_type)
+        if handler_class:
+            return handler_class()
+        return None
+
+# Singleton instances
+manager = ConnectionManager()
+registry = HandlerRegistry()

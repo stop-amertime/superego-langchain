@@ -33,8 +33,6 @@ export class WebSocketClient {
   private reconnectTimeout: number | null = null;
   private url: string;
   private lastConnectionAttempt = 0;
-  private currentFlowInstanceId: string | null = null;
-
   constructor(callbacks: WebSocketClientCallbacks = {}, url: string = WS_URL) {
     this.clientId = uuidv4();
     this.callbacks = callbacks;
@@ -106,55 +104,29 @@ export class WebSocketClient {
     }
   }
 
-  /**
-   * Sets the current active flow instance ID for this client
-   */
-  public setFlowInstanceId(flowInstanceId: string): void {
-    this.currentFlowInstanceId = flowInstanceId;
-    debugMessageTypes.log('WebSocketClient.setFlowInstanceId', `Set flow instance ID to ${flowInstanceId}`);
-  }
-
-  /**
-   * Gets the current active flow instance ID
-   */
-  public getFlowInstanceId(): string | null {
-    return this.currentFlowInstanceId;
-  }
-
-  /**
-   * Sets the current active conversation ID for this client (legacy method)
-   * @deprecated Use setFlowInstanceId instead
-   */
-  public setConversationId(conversationId: string): void {
-    this.setFlowInstanceId(conversationId);
-  }
-
-  /**
-   * Gets the current active conversation ID (legacy method)
-   * @deprecated Use getFlowInstanceId instead
-   */
-  public getConversationId(): string | null {
-    return this.getFlowInstanceId();
-  }
+  // Removed setFlowInstanceId, getFlowInstanceId, setConversationId, and getConversationId methods
+  // These methods maintained state that should be passed directly with each message
 
   /**
    * Send a command to the server
    * @param type The command type
    * @param payload The command payload
-   * @param conversationId Optional conversation ID (uses current conversation ID if not provided)
+   * @param flowInstanceId The flow instance ID (required)
    */
-  public sendCommand(type: string | WebSocketMessageType, payload: Record<string, any> = {}, conversationId?: string): void {
+  public sendCommand(type: string | WebSocketMessageType, payload: Record<string, any> = {}, flowInstanceId: string): void {
+    if (!flowInstanceId) {
+      console.error('Flow instance ID is required for sendCommand');
+      return;
+    }
+    
     const messageId = uuidv4();
     messageFlowTracker.startTracking(messageId, `Command: ${type}`);
-    
-    // Use provided conversation ID or fall back to the client's current flow instance ID
-    const actualConversationId = conversationId || this.currentFlowInstanceId;
     
     // Create the complete command with all necessary fields
     const command = {
       type: type,
       ...payload,
-      flow_instance_id: actualConversationId, // Use flow_instance_id instead of conversation_id
+      flow_instance_id: flowInstanceId,
       client_message_id: messageId
     };
     
@@ -183,31 +155,35 @@ export class WebSocketClient {
   
   /**
    * Send a user message to the server
+   * @param message The message content
+   * @param flowInstanceId The flow instance ID (required)
    */
-  public sendMessage(message: string, conversationId?: string): void {
+  public sendMessage(message: string, flowInstanceId: string): void {
+    if (!flowInstanceId) {
+      console.error('Flow instance ID is required for sendMessage');
+      return;
+    }
+    
     const messageId = uuidv4();
     messageFlowTracker.startTracking(messageId, 'User Message');
-    
-    // Use provided conversation ID or fall back to the client's current flow instance ID
-    const actualConversationId = conversationId || this.currentFlowInstanceId;
     
     const data = JSON.stringify({
       type: WebSocketMessageType.USER_MESSAGE,
       content: message,
-      flow_instance_id: actualConversationId, // Use flow_instance_id instead of conversation_id
+      flow_instance_id: flowInstanceId,
       client_message_id: messageId // Added for tracking
     });
 
     messageFlowTracker.addStep(messageId, 'Preparing to send message', {
       type: WebSocketMessageType.USER_MESSAGE,
       content: message,
-      flow_instance_id: actualConversationId // Use flow_instance_id instead of conversation_id
+      flow_instance_id: flowInstanceId
     });
 
     // Check if socket is in a valid state
     if (this.connected && this.socket?.readyState === WebSocket.OPEN) {
       try {
-        debugMessageTypes.websocket.sent('USER_MESSAGE', { message, conversationId, messageId });
+        debugMessageTypes.websocket.sent('USER_MESSAGE', { message, flowInstanceId, messageId });
         this.socket.send(data);
         messageFlowTracker.addStep(messageId, 'Message sent to server');
       } catch (error) {
