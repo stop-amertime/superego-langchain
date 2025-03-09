@@ -6,6 +6,7 @@ from .sysprompts import router as sysprompts_router
 from .flow_configs import router as flow_configs_router
 from .flow_templates import router as flow_templates_router
 from .flow_instances import router as flow_instances_router
+from .messages import router as messages_router
 
 # Create the main API router
 api_router = APIRouter()
@@ -16,3 +17,4 @@ api_router.include_router(sysprompts_router)
 api_router.include_router(flow_configs_router)
 api_router.include_router(flow_templates_router)
 api_router.include_router(flow_instances_router)
+api_router.include_router(messages_router)

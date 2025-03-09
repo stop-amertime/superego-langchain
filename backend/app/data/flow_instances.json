@@ -1,52 +1,22 @@
 {
-  "89d055a9-5b5e-4bf0-9c61-6f3633318815": {
-    "id": "89d055a9-5b5e-4bf0-9c61-6f3633318815",
+  "767737b6-eef7-4275-941c-1245e414970c": {
+    "id": "767737b6-eef7-4275-941c-1245e414970c",
     "flow_config_id": "cee9fc1d-9c9b-4fa6-826e-5da9ddbf6d0e",
-    "conversation_id": "4b3179bb-0a4a-4985-9397-4c8a5a80cffb",
-    "name": "Default Session",
-    "description": "Automatically created default session",
-    "created_at": "2025-03-08T11:36:27.239177",
-    "updated_at": "2025-03-08T11:36:27.239188",
+    "conversation_id": "3eabb4f1-a45c-4580-a798-88b737d1fd46",
+    "name": "s",
+    "description": null,
+    "created_at": "2025-03-09T14:47:34.523990",
+    "updated_at": "2025-03-09T14:47:34.523990",
     "last_message_at": null
   },
-  "ace3d50b-a207-496b-8419-b41ef9d689e7": {
-    "id": "ace3d50b-a207-496b-8419-b41ef9d689e7",
+  "e6eb5fd2-f46e-493b-b16f-c5d5557cd665": {
+    "id": "e6eb5fd2-f46e-493b-b16f-c5d5557cd665",
     "flow_config_id": "cee9fc1d-9c9b-4fa6-826e-5da9ddbf6d0e",
-    "conversation_id": "28810256-d260-4057-bfcc-59e049447566",
-    "name": "abc",
+    "conversation_id": "f0b3328a-b43e-4b6f-aab8-b9a8bd662ce1",
+    "name": "z",
     "description": null,
-    "created_at": "2025-03-09T13:49:57.032541",
-    "updated_at": "2025-03-09T13:49:57.032541",
-    "last_message_at": null
-  },
-  "86504539-4882-4853-8b1c-c053ec7aae10": {
-    "id": "86504539-4882-4853-8b1c-c053ec7aae10",
-    "flow_config_id": "cee9fc1d-9c9b-4fa6-826e-5da9ddbf6d0e",
-    "conversation_id": "eee8f122-9400-4221-ada5-fb6978f4a977",
-    "name": "abc",
-    "description": null,
-    "created_at": "2025-03-09T13:49:57.042548",
-    "updated_at": "2025-03-09T13:49:57.042548",
-    "last_message_at": null
-  },
-  "2dcb5c09-4876-4a1e-ae19-aaeaaaf2c319": {
-    "id": "2dcb5c09-4876-4a1e-ae19-aaeaaaf2c319",
-    "flow_config_id": "cee9fc1d-9c9b-4fa6-826e-5da9ddbf6d0e",
-    "conversation_id": "823f87e4-6326-4eb6-ba1c-9ef8b0f15e56",
-    "name": "X",
-    "description": null,
-    "created_at": "2025-03-09T14:04:36.378884",
-    "updated_at": "2025-03-09T14:04:36.378884",
-    "last_message_at": null
-  },
-  "a8ede289-0b66-45ce-9fb3-6932766b56b1": {
-    "id": "a8ede289-0b66-45ce-9fb3-6932766b56b1",
-    "flow_config_id": "cee9fc1d-9c9b-4fa6-826e-5da9ddbf6d0e",
-    "conversation_id": "385e01f8-ece6-480f-b43d-a50bd2023ae9",
-    "name": "X",
-    "description": null,
-    "created_at": "2025-03-09T14:04:36.403330",
-    "updated_at": "2025-03-09T14:04:36.403330",
+    "created_at": "2025-03-09T14:52:45.612563",
+    "updated_at": "2025-03-09T14:52:45.612563",
     "last_message_at": null
   }
 }

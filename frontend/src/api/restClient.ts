@@ -9,7 +9,8 @@ import {
     Sysprompt, 
     FlowConfig, 
     FlowTemplate, 
-    FlowInstance 
+    FlowInstance,
+    Message
 } from '../types';
 
 // Default API URL
@@ -120,6 +121,53 @@ export const flowInstancesApi = {
         api.post<ApiResponse<FlowInstance>>(`/api/flow-instances/${id}/update-last-message/`),
 };
 
+/**
+ * API client for message stores
+ */
+export const messagesApi = {
+    getAll: (limit?: number, offset?: number) => {
+        let url = '/api/messages/';
+        const params = new URLSearchParams();
+        if (limit !== undefined) params.append('limit', limit.toString());
+        if (offset !== undefined) params.append('offset', offset.toString());
+        
+        const queryString = params.toString();
+        if (queryString) {
+            url += `?${queryString}`;
+        }
+        
+        return api.get<ApiResponse<any[]>>(url);
+    },
+    getById: (id: string, limit?: number, offset?: number) => {
+        let url = `/api/messages/${id}/`;
+        const params = new URLSearchParams();
+        if (limit !== undefined) params.append('limit', limit.toString());
+        if (offset !== undefined) params.append('offset', offset.toString());
+        
+        const queryString = params.toString();
+        if (queryString) {
+            url += `?${queryString}`;
+        }
+        
+        return api.get<ApiResponse<{id: string, messages: any[], total_messages: number}>>(url);
+    },
+    create: () => api.post<ApiResponse<{id: string, messages: any[]}>>(
+        '/api/messages/'
+    ),
+    update: (id: string, messages: any[]) => api.put<ApiResponse<{id: string, messages: any[], message_count: number}>>(
+        `/api/messages/${id}/`, 
+        messages
+    ),
+    delete: (id: string) => api.delete<ApiResponse<{message: string}>>(
+        `/api/messages/${id}/`
+    ),
+};
+
+/**
+ * API client for conversations (alias for messages for backward compatibility)
+ */
+export const conversationsApi = messagesApi;
+
 // Export all APIs
 export const api_client = {
     constitutions: constitutionsApi,
@@ -127,6 +175,8 @@ export const api_client = {
     flowConfigs: flowConfigsApi,
     flowTemplates: flowTemplatesApi,
     flowInstances: flowInstancesApi,
+    messages: messagesApi,
+    conversations: conversationsApi,
 };
 
 export default api_client;

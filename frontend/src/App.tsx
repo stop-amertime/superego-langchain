@@ -9,7 +9,12 @@ import './App.css'
 import './components/TestMessages.css'
 import { getWebSocketClient } from './api/websocketClient'
 import { WebSocketMessageType } from './types'
-import { useCreateFlowInstance, queryClient } from './api/queryHooks'
+import { 
+  useCreateFlowInstance, 
+  useFlowInstances, 
+  useFlowConfigs, 
+  queryClient 
+} from './api/queryHooks'
 
 // Import the interfaces from the types folder for better organization
 import { Constitution, Sysprompt, FlowInstance, FlowConfig } from './types'
@@ -41,14 +46,21 @@ function App() {
   // Data states with initial empty values
   const [constitutions, setConstitutions] = useState<Constitution[]>([])
   const [sysprompts, setSysprompts] = useState<Sysprompt[]>([])
-  const [flowInstances, setFlowInstances] = useState<FlowInstance[]>([])
-  const [flowConfigs, setFlowConfigs] = useState<FlowConfig[]>([])
   const [constitutionsLoading, setConstitutionsLoading] = useState(true)
   const [syspromptsLoading, setSyspromptsLoading] = useState(true)
-  const [instancesLoading, setInstancesLoading] = useState(true)
-  const [configsLoading, setConfigsLoading] = useState(true)
   const [constitutionsError, setConstitutionsError] = useState<string | null>(null)
   const [syspromptsError, setSyspromptsError] = useState<string | null>(null)
+  
+  // Use React Query hooks for flow instances and configs
+  const { 
+    data: flowInstances = [], 
+    isLoading: instancesLoading 
+  } = useFlowInstances();
+  
+  const { 
+    data: flowConfigs = [], 
+    isLoading: configsLoading 
+  } = useFlowConfigs();
 
   // Check if API key is set in backend
   useEffect(() => {
@@ -67,82 +79,25 @@ function App() {
     checkApiKey()
   }, [])
   
-  // Fetch flow instances and configs from backend
+  // Update flow instance ID when selected instance changes
   useEffect(() => {
-    const wsClient = getWebSocketClient()
-    
-    // Ensure connection is established
-    if (!wsClient.isConnected()) {
-      wsClient.connect()
-    }
-    
-    // Setup message handler for responses
-    const onMessage = (message: any) => {
-      console.log("App received WebSocket message:", message.type);
+    if (selectedInstanceId && flowInstances.length > 0) {
+      // Find the selected instance in our data
+      const selectedInstance = flowInstances.find(instance => instance.id === selectedInstanceId);
       
-      if (message.type === 'flow_instances_response' || 
-          message.type === WebSocketMessageType.FLOW_INSTANCES_RESPONSE) {
-        console.log("Received flow instances:", message.content);
-        // Store instances when we receive them
-        if (message.content && Array.isArray(message.content)) {
-          setFlowInstances(message.content);
-          setInstancesLoading(false);
-          
-          // If there's a selected instance ID, ensure the flow instance ID is updated
-          if (selectedInstanceId) {
-            const instance = message.content.find((inst: FlowInstance) => inst.id === selectedInstanceId);
-            if (instance && instance.conversation_id) {
-              setCurrentFlowInstanceId(instance.conversation_id);
-              // Update the WebSocketClient with this flow instance ID
-              const wsClient = getWebSocketClient();
-              wsClient.setFlowInstanceId(instance.conversation_id);
-              console.log(`Updated flow instance ID to ${instance.conversation_id} from instance ${selectedInstanceId}`);
-            }
-          }
-        }
-      }
-      else if (message.type === 'flow_configs_response' || 
-              message.type === WebSocketMessageType.FLOW_CONFIGS_RESPONSE ||
-              // For backward compatibility:
-              (message.type === 'flows_response' && message.content && 
-               message.content.length > 0 && !('flow_instance_id' in message.content[0]))) {
-        console.log("Received flow configs:", message.content);
-        if (message.content && Array.isArray(message.content)) {
-          setFlowConfigs(message.content);
-          setConfigsLoading(false);
-        }
-      }
-      else if (message.type === 'flows_response' && message.content && 
-               message.content.length > 0 && 'flow_instance_id' in message.content[0]) {
-        // Legacy support for instances via flows_response
-        console.log("Received flow instances via legacy flow_response:", message.content);
-        setFlowInstances(message.content);
-        setInstancesLoading(false);
-      }
-      else if (message.type === 'system_message' && 
-               message.content && message.content.message && 
-               message.content.message.includes('Flow instance created')) {
-        console.log("Flow instance created, refreshing instances");
-        // Refresh instances after creation
+      if (selectedInstance) {
+        // Use the actual message_store_id from the instance, not the instance ID
+        const flowInstanceId = selectedInstance.message_store_id;
+        setCurrentFlowInstanceId(flowInstanceId);
+        
+        // Update the WebSocketClient's flow instance ID for future messages
         const wsClient = getWebSocketClient();
-        wsClient.sendCommand('get_flow_instances');
+        wsClient.setFlowInstanceId(flowInstanceId);
+        
+        console.log(`Selected instance ${selectedInstanceId} with flow instance ID ${flowInstanceId}`);
       }
     }
-    
-    wsClient.updateCallbacks({ onMessage })
-    
-    // Request data if connected
-    if (wsClient.isConnected()) {
-      // Request configs and instances
-      wsClient.sendCommand('get_flow_configs');
-      wsClient.sendCommand('get_flow_instances');
-    }
-    
-    return () => {
-      // Clean up by removing our specific message handler
-      wsClient.updateCallbacks({ onMessage: undefined });
-    }
-  }, [selectedInstanceId])
+  }, [selectedInstanceId, flowInstances]);
   
   // Handle instance selection
   const handleSelectInstance = (instanceId: string) => {
@@ -152,8 +107,8 @@ function App() {
     const selectedInstance = flowInstances.find(instance => instance.id === instanceId);
     
     if (selectedInstance) {
-      // Use the actual conversation_id from the instance, not the instance ID
-      const flowInstanceId = selectedInstance.conversation_id;
+      // Use the actual message_store_id from the instance, not the instance ID
+      const flowInstanceId = selectedInstance.message_store_id;
       setCurrentFlowInstanceId(flowInstanceId);
       
       // Update the WebSocketClient's flow instance ID for future messages
@@ -169,23 +124,43 @@ function App() {
   // Create instance mutation
   const createInstanceMutation = useCreateFlowInstance();
   
-  // Function to create default instance if needed
-  const createDefaultInstanceIfNeeded = () => {
-    // Only proceed if we have configs but no instances
-    if (flowConfigs.length === 0 || flowInstances.length > 0) {
+  // Function to select the first instance or create a new one if none exist
+  const selectFirstInstanceOrCreateNew = () => {
+    // If we already have a selected instance, do nothing
+    if (selectedInstanceId) {
       return;
     }
     
-    console.log("Creating default instance since we have configs but no instances");
+    // If we have instances, select the first one
+    if (flowInstances.length > 0) {
+      const firstInstance = flowInstances[0];
+      console.log(`Selecting first instance: ${firstInstance.id}`);
+      setSelectedInstanceId(firstInstance.id);
+      
+      // Set the flow instance ID for WebSocket communication
+      if (firstInstance.message_store_id) {
+        setCurrentFlowInstanceId(firstInstance.message_store_id);
+        const wsClient = getWebSocketClient();
+        wsClient.setFlowInstanceId(firstInstance.message_store_id);
+      }
+      return;
+    }
+    
+    // Only create a new instance if we have configs but no instances
+    if (flowConfigs.length === 0) {
+      return;
+    }
+    
+    console.log("Creating new instance since no instances exist");
     
     // Find a config with superego enabled (preferably) or just take the first one
     const standardConfig = flowConfigs.find(c => c.superego_enabled) || flowConfigs[0];
     
-    // Create a default instance using the REST API
+    // Create a new instance using the REST API
     const newInstanceData = {
-      name: "Default Session",
+      name: "New Session",
       flow_config_id: standardConfig.id,
-      description: "Automatically created default session"
+      description: "Automatically created session"
     };
     
     createInstanceMutation.mutate(newInstanceData as any, {
@@ -198,44 +173,30 @@ function App() {
           setSelectedInstanceId(data.id);
           
           // Set the flow instance ID for WebSocket communication
-          if (data.conversation_id) {
-            setCurrentFlowInstanceId(data.conversation_id);
+          if (data.message_store_id) {
+            setCurrentFlowInstanceId(data.message_store_id);
             const wsClient = getWebSocketClient();
-            wsClient.setFlowInstanceId(data.conversation_id);
+            wsClient.setFlowInstanceId(data.message_store_id);
           }
         }
       }
     });
   };
   
-  // Create default instance when configs and instances are loaded
+  // Select first instance or create new one when configs and instances are loaded
   useEffect(() => {
     if (!configsLoading && !instancesLoading) {
-      createDefaultInstanceIfNeeded();
+      selectFirstInstanceOrCreateNew();
     }
-  }, [configsLoading, instancesLoading, flowConfigs, flowInstances]);
+  }, [configsLoading, instancesLoading, flowConfigs, flowInstances, selectedInstanceId]);
   
   // Handle creating a new instance
   const handleCreateInstance = (newInstanceData: {name: string, flow_config_id: string, description?: string}) => {
-    // Create the instance via REST API
-    createInstanceMutation.mutate(newInstanceData as any, {
-      onSuccess: (data) => {
-        // Invalidate the flow instances query to refresh the list
-        queryClient.invalidateQueries({ queryKey: ['flowInstances'] });
-        
-        // Select the newly created instance
-        if (data && data.id) {
-          setSelectedInstanceId(data.id);
-          
-          // Set the flow instance ID for WebSocket communication
-          if (data.conversation_id) {
-            setCurrentFlowInstanceId(data.conversation_id);
-            const wsClient = getWebSocketClient();
-            wsClient.setFlowInstanceId(data.conversation_id);
-          }
-        }
-      }
-    });
+    // The instance is already created by the InstanceSidebar component's mutation
+    // We just need to handle the selection of the new instance
+    
+    // Invalidate the flow instances query to refresh the list
+    queryClient.invalidateQueries({ queryKey: ['flowInstances'] });
   };
   
   // Handle user input changes (for the parallel flows view)
@@ -285,9 +246,6 @@ function App() {
             onSelectInstance={handleSelectInstance}
             onCreateInstance={handleCreateInstance}
             onToggleSidebar={handleToggleSidebar}
-            flowConfigs={flowConfigs}
-            flowInstances={flowInstances}
-            loading={configsLoading || instancesLoading}
           />
         )}
         

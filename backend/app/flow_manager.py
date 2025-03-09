@@ -89,11 +89,11 @@ def init_default_flow_templates():
         
         # Create a default instance based on the standard flow
         default_instance_id = str(uuid.uuid4())
-        default_conversation_id = str(uuid.uuid4())
+        default_message_store_id = str(uuid.uuid4())
         default_instance = FlowInstance(
             id=default_instance_id,
             flow_config_id=standard_config_id,
-            conversation_id=default_conversation_id,
+            message_store_id=default_message_store_id,
             name="Default Session",
             description="Automatically created default session"
         )
@@ -280,11 +280,11 @@ def create_flow_instance(
 ) -> FlowInstance:
     """Create a new flow instance."""
     instance_id = str(uuid.uuid4())
-    conversation_id = str(uuid.uuid4())
+    message_store_id = str(uuid.uuid4())
     instance = FlowInstance(
         id=instance_id,
         flow_config_id=flow_config_id,
-        conversation_id=conversation_id,
+        message_store_id=message_store_id,
         name=name,
         description=description
     )
@@ -503,11 +503,11 @@ if not flow_instances:
         if standard_config:
             # Create the default instance
             default_instance_id = str(uuid.uuid4())
-            default_conversation_id = str(uuid.uuid4())
+            default_message_store_id = str(uuid.uuid4())
             default_instance = FlowInstance(
                 id=default_instance_id,
                 flow_config_id=standard_config.id,
-                conversation_id=default_conversation_id,
+                message_store_id=default_message_store_id,
                 name="Default Session",
                 description="Automatically created default session"
             )

@@ -120,10 +120,10 @@ class FlowTemplate(BaseModel):
 
 
 class FlowInstance(BaseModel):
-    """An instance of a flow with its own conversation history."""
+    """An instance of a flow with its own message history."""
     id: str
     flow_config_id: str
-    conversation_id: str
+    message_store_id: str
     name: str
     description: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat())

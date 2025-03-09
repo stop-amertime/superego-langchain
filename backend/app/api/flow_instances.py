@@ -41,7 +41,7 @@ class FlowInstanceUpdate(BaseModel):
 class FlowInstanceResponse(FlowInstanceBase):
     """Model for flow instance response."""
     id: str
-    conversation_id: str
+    message_store_id: str
     created_at: str
     updated_at: str
     last_message_at: Optional[str] = None

@@ -9,7 +9,8 @@ import {
     Sysprompt, 
     FlowConfig, 
     FlowTemplate, 
-    FlowInstance 
+    FlowInstance,
+    Message
 } from '../types';
 import api_client, { ApiResponse } from './restClient';
 
@@ -45,6 +46,10 @@ export const queryKeys = {
     flowInstances: {
         all: ['flowInstances'] as const,
         detail: (id: string) => ['flowInstances', id] as const,
+    },
+    messages: {
+        all: ['messages'] as const,
+        detail: (id: string) => ['messages', id] as const,
     },
 };
 
@@ -429,3 +434,73 @@ export const useUpdateFlowInstanceLastMessage = (id: string) => {
         },
     });
 };
+
+// Message store hooks
+export const useMessageStores = (limit?: number, offset?: number) => {
+    return useQuery({
+        queryKey: [...queryKeys.messages.all, { limit, offset }],
+        queryFn: async () => {
+            const response = await api_client.messages.getAll(limit, offset);
+            return extractData<any[]>(response.data);
+        },
+    });
+};
+
+export const useMessageStore = (id: string, limit?: number, offset?: number) => {
+    return useQuery({
+        queryKey: [...queryKeys.messages.detail(id), { limit, offset }],
+        queryFn: async () => {
+            const response = await api_client.messages.getById(id, limit, offset);
+            return extractData<{id: string, messages: any[], total_messages: number}>(response.data);
+        },
+        enabled: !!id,
+    });
+};
+
+export const useCreateMessageStore = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async () => {
+            const response = await api_client.messages.create();
+            return extractData<{id: string, messages: any[]}>(response.data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.messages.all });
+        },
+    });
+};
+
+export const useUpdateMessageStore = (id: string) => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (messages: any[]) => {
+            const response = await api_client.messages.update(id, messages);
+            return extractData<{id: string, messages: any[], message_count: number}>(response.data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.messages.detail(id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.messages.all });
+        },
+    });
+};
+
+export const useDeleteMessageStore = () => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: async (id: string) => {
+            const response = await api_client.messages.delete(id);
+            return id;
+        },
+        onSuccess: (id) => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.messages.all });
+            queryClient.removeQueries({ queryKey: queryKeys.messages.detail(id) });
+        },
+    });
+};
+
+// Aliases for backward compatibility
+export const useConversations = useMessageStores;
+export const useConversation = useMessageStore;
+export const useCreateConversation = useCreateMessageStore;
+export const useUpdateConversation = useUpdateMessageStore;
+export const useDeleteConversation = useDeleteMessageStore;

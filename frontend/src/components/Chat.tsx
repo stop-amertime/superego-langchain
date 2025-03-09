@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { getWebSocketClient, WebSocketClientCallbacks } from '../api/websocketClient';
-import { useConstitutions, useSysprompts } from '../api/queryHooks';
+import { 
+  useConstitutions, 
+  useSysprompts, 
+  useMessageStore,
+  useUpdateMessageStore,
+  useCreateMessageStore
+} from '../api/queryHooks';
 import { 
   Message, 
   MessageRole, 
@@ -99,6 +105,21 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
   // Initialize flow instance ID and WebSocket client reference
   const wsClientRef = useRef<ReturnType<typeof getWebSocketClient> | null>(null);
 
+  // Fetch message store history using React Query
+  const { 
+    data: messageStoreData, 
+    isLoading: isLoadingMessageStore,
+    error: messageStoreError
+  } = useMessageStore(
+    flowInstanceId || '', 
+    undefined, // No limit
+    undefined  // No offset
+  );
+  
+  // Mutations for message store management
+  const updateMessageStoreMutation = useUpdateMessageStore(flowInstanceId || '');
+  const createMessageStoreMutation = useCreateMessageStore();
+  
   // Initialize flow instance ID from props and fetch conversation history
   useEffect(() => {
     if (propFlowInstanceId) {
@@ -108,14 +129,52 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
       const wsClient = getWebSocketClient();
       wsClient.setFlowInstanceId(propFlowInstanceId);
       
-      // Fetch conversation history for this flow instance
-      wsClient.sendCommand('get_conversation_history', {}, propFlowInstanceId);
+      // Clear messages when switching instances
+      setMessages([]);
+      setStreamingMessage(null);
+      setStreamingThinking(null);
+      setCurrentEvaluation(null);
       
-      // Don't clear messages immediately - the backend will send a conversation update
-      // that will replace the messages when the history is loaded
-      setSystemMessage('Loading conversation history...');
+      // System message is handled by the loading state of useMessageStore
+      if (isLoadingMessageStore) {
+        setSystemMessage('Loading message history...');
+      }
     }
   }, [propFlowInstanceId]);
+  
+  // Handle 404 errors by creating a new message store
+  useEffect(() => {
+    if (messageStoreError && flowInstanceId) {
+      console.log('Message store not found, creating a new one for flow instance:', flowInstanceId);
+      createMessageStoreMutation.mutate(undefined, {
+        onSuccess: (data) => {
+          console.log('Created new message store:', data);
+          // No need to do anything else, the message store will be loaded automatically
+        }
+      });
+    }
+  }, [messageStoreError, flowInstanceId, createMessageStoreMutation]);
+  
+  // Update messages when message store data changes
+  useEffect(() => {
+    if (messageStoreData && messageStoreData.messages) {
+      // Convert the message data to our Message type format
+      const convertedMessages = messageStoreData.messages.map((msgData: any) => ({
+        id: msgData.id,
+        role: msgData.role,
+        content: msgData.content,
+        timestamp: msgData.timestamp,
+        decision: msgData.decision,
+        constitutionId: msgData.constitutionId,
+        thinking: msgData.thinking,
+        thinkingTime: msgData.thinkingTime,
+        withoutSuperego: msgData.withoutSuperego
+      } as Message));
+      
+      setMessages(convertedMessages);
+      setSystemMessage('Messages loaded');
+    }
+  }, [messageStoreData]);
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -151,34 +210,7 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
         setMaxReconnectAttempts(maxAttempts);
         setSystemMessage(`Reconnecting (attempt ${attempt}/${maxAttempts})...`);
       },
-      onConversationUpdate: (messagesData, replace) => {
-        if (replace) {
-          // Convert the message data to our Message type format
-          const convertedMessages = messagesData.map((msgData: any) => ({
-            id: msgData.id,
-            role: msgData.role,
-            content: msgData.content,
-            timestamp: msgData.timestamp,
-            decision: msgData.decision,
-            constitutionId: msgData.constitutionId,
-            thinking: msgData.thinking,
-            thinkingTime: msgData.thinkingTime,
-            withoutSuperego: msgData.withoutSuperego
-          } as Message));
-          
-          // Replace all messages in state
-          setMessages(convertedMessages);
-          
-          // Only show "rerun results" message if this is actually from a rerun operation
-          // This is determined by checking if there's a superego message in the data
-          const hasSuperegoMessage = messagesData.some((msg: any) => msg.role === 'superego');
-          if (hasSuperegoMessage) {
-            setSystemMessage('Chat updated with rerun results');
-          } else {
-            setSystemMessage('Conversation loaded');
-          }
-        }
-      },
+      // We no longer need the onConversationUpdate handler as we're using REST API
       onSuperEgoEvaluation: (evaluation) => {
         // Validate the evaluation object
         if (!evaluation) {
@@ -235,7 +267,27 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
           // Add to messages if not a duplicate
           setMessages(prev => {
             if (!prev.some(m => m.id === superEgoMessage.id)) {
-              return [...prev, superEgoMessage];
+              const newMessages = [...prev, superEgoMessage];
+              
+              // Update message store in the backend via REST API
+              if (flowInstanceId) {
+                // Convert Message objects to plain objects
+                const messagesToSave = newMessages.map(msg => ({
+                  id: msg.id,
+                  role: msg.role,
+                  content: msg.content,
+                  timestamp: msg.timestamp,
+                  decision: msg.decision,
+                  constitutionId: msg.constitutionId,
+                  syspromptId: msg.syspromptId,
+                  thinking: msg.thinking,
+                  thinkingTime: msg.thinkingTime,
+                  withoutSuperego: msg.withoutSuperego
+                }));
+                updateMessageStoreMutation.mutate(messagesToSave);
+              }
+              
+              return newMessages;
             }
             return prev;
           });
@@ -289,7 +341,27 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
         // Add message if not a duplicate
         setMessages(prev => {
           if (!prev.some(m => m.id === assistantMessage.id)) {
-            return [...prev, assistantMessage];
+            const newMessages = [...prev, assistantMessage];
+            
+            // Update message store in the backend via REST API
+            if (flowInstanceId) {
+              // Convert Message objects to plain objects
+              const messagesToSave = newMessages.map(msg => ({
+                id: msg.id,
+                role: msg.role,
+                content: msg.content,
+                timestamp: msg.timestamp,
+                decision: msg.decision,
+                constitutionId: msg.constitutionId,
+                syspromptId: msg.syspromptId,
+                thinking: msg.thinking,
+                thinkingTime: msg.thinkingTime,
+                withoutSuperego: msg.withoutSuperego
+              }));
+              updateMessageStoreMutation.mutate(messagesToSave);
+            }
+            
+            return newMessages;
           }
           return prev;
         });
@@ -360,7 +432,30 @@ const Chat: React.FC<ChatProps> = ({ flowInstanceId: propFlowInstanceId, onUserI
       timestamp: new Date().toISOString()
     };
     
-    setMessages(prev => [...prev, userMessage]);
+    // Update messages state and persist to backend
+    setMessages(prev => {
+      const newMessages = [...prev, userMessage];
+      
+      // Update message store in the backend via REST API
+      if (flowInstanceId) {
+        // Convert Message objects to plain objects
+        const messagesToSave = newMessages.map(msg => ({
+          id: msg.id,
+          role: msg.role,
+          content: msg.content,
+          timestamp: msg.timestamp,
+          decision: msg.decision,
+          constitutionId: msg.constitutionId,
+          syspromptId: msg.syspromptId,
+          thinking: msg.thinking,
+          thinkingTime: msg.thinkingTime,
+          withoutSuperego: msg.withoutSuperego
+        }));
+        updateMessageStoreMutation.mutate(messagesToSave);
+      }
+      
+      return newMessages;
+    });
     
     // Send via WebSocket using the direct command sending method
     const wsClient = getWebSocketClient();

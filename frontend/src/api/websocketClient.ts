@@ -17,7 +17,7 @@ export interface WebSocketClientCallbacks {
   onError?: (error: string) => void;
   onReconnectAttempt?: (attempt: number, maxAttempts: number) => void;
   onConnecting?: () => void;
-  onConversationUpdate?: (messages: any[], replace: boolean) => void;
+  // onConversationUpdate removed as it's now handled via REST API
 }
 
 export class WebSocketClient {
@@ -325,29 +325,9 @@ export class WebSocketClient {
       
       // Type-specific handlers
       switch (message.type) {
-        case WebSocketMessageType.CONVERSATION_UPDATE:
-          if (this.callbacks.onConversationUpdate) {
-            debugMessageTypes.log('WebSocketClient.handleMessage', 'Processing CONVERSATION_UPDATE');
-            // Handle conversation update message
-            if (typeof message.content === 'object' && message.content !== null) {
-              const { messages, replace } = message.content;
-              if (Array.isArray(messages)) {
-                this.callbacks.onConversationUpdate(messages, replace === true);
-              } else {
-                debugMessageTypes.error('WebSocketClient.handleMessage', {
-                  error: 'Invalid CONVERSATION_UPDATE content format',
-                  content: message.content
-                });
-              }
-            } else {
-              debugMessageTypes.error('WebSocketClient.handleMessage', {
-                error: 'Invalid CONVERSATION_UPDATE content format',
-                content: message.content
-              });
-            }
-          }
-          break;
-          
+        // CONVERSATION_UPDATE handler removed as it's now handled via REST API
+        
+        // Constitution operations are now handled via REST API
         case WebSocketMessageType.CREATE_CONSTITUTION:
         case WebSocketMessageType.UPDATE_CONSTITUTION:
         case WebSocketMessageType.DELETE_CONSTITUTION:
@@ -369,10 +349,7 @@ export class WebSocketClient {
           }
           break;
         
-        case WebSocketMessageType.CONSTITUTIONS_RESPONSE:
-          debugMessageTypes.log('WebSocketClient.handleMessage', 'Processing CONSTITUTIONS_RESPONSE');
-          // This is handled by the onMessage callback, no specific handler needed
-          break;
+        // CONSTITUTIONS_RESPONSE handler removed as it's now handled via REST API
         
         case WebSocketMessageType.ASSISTANT_MESSAGE:
           if (this.callbacks.onAssistantMessage) {
@@ -459,16 +436,7 @@ export class WebSocketClient {
     };
   }
   
-  // Method to explicitly request conversation history
-  public requestConversationHistory(conversationId: string): void {
-    if (!conversationId) {
-      console.error('Cannot request conversation history: No conversation ID provided');
-      return;
-    }
-    
-    debugMessageTypes.log('WebSocketClient.requestConversationHistory', `Requesting history for conversation ${conversationId}`);
-    this.sendCommand('get_conversation_history', {}, conversationId);
-  }
+  // requestConversationHistory method removed as it's now handled via REST API
 }
 
 // Singleton instance

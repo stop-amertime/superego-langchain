@@ -14,9 +14,9 @@ interface InstanceSidebarProps {
   onSelectInstance: (instanceId: string) => void;
   onCreateInstance: (instanceData: {name: string, flow_config_id: string, description?: string}) => void;
   onToggleSidebar: () => void;
-  flowConfigs: FlowConfig[];
-  flowInstances: FlowInstance[];
-  loading: boolean;
+  flowConfigs?: FlowConfig[];
+  flowInstances?: FlowInstance[];
+  loading?: boolean;
 }
 
 const InstanceSidebar: React.FC<InstanceSidebarProps> = ({
@@ -44,10 +44,19 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({
   const updateInstanceMutation = useUpdateFlowInstance(isRenaming || '');
   const deleteInstanceMutation = useDeleteFlowInstance();
   
-  // Use React Query data exclusively
-  const instances = fetchedInstances || [];
-  const configs = fetchedConfigs || [];
-  const isDataLoading = instancesLoading || configsLoading;
+  // Use React Query data exclusively, with fallback to props for backward compatibility
+  const instances = fetchedInstances || flowInstances || [];
+  const configs = fetchedConfigs || flowConfigs || [];
+  const isDataLoading = instancesLoading || configsLoading || loading;
+  
+  // Set default config when opening the create form
+  useEffect(() => {
+    if (isCreating && configs.length > 0 && !selectedConfigId) {
+      // Prefer a config with superego enabled, but take any if none have it
+      const defaultConfig = configs.find(c => c.superego_enabled) || configs[0];
+      setSelectedConfigId(defaultConfig.id);
+    }
+  }, [isCreating, configs, selectedConfigId]);
   
   // Handle create instance form submission
   const handleCreateInstanceSubmit = () => {
@@ -63,14 +72,19 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({
     // Use the mutation to create the instance
     createInstanceMutation.mutate(newInstanceData as any, {
       onSuccess: (data) => {
-        // Call the parent method to update UI
-        onCreateInstance(newInstanceData);
-        
         // Reset form
         setNewInstanceName('');
         setNewInstanceDescription('');
         setSelectedConfigId(null);
         setIsCreating(false);
+        
+        // Select the newly created instance
+        if (data && data.id) {
+          onSelectInstance(data.id);
+        }
+        
+        // Call the parent method to update UI
+        onCreateInstance(newInstanceData);
       }
     });
   };
