@@ -14,7 +14,7 @@ from ..message_store import (
     delete_message_store,
     get_all_message_stores
 )
-from .utils import create_response
+from .utils import create_success_response as create_response
 
 # Create router
 router = APIRouter(

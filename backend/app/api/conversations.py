@@ -14,7 +14,7 @@ from ..conversation_manager import (
     delete_conversation,
     get_all_conversations
 )
-from .utils import create_response
+from .utils import create_success_response as create_response
 
 # Create router
 router = APIRouter(
