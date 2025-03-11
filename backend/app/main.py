@@ -32,12 +32,14 @@ app = FastAPI(
 
 # Configure CORS
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+svelte_frontend_urls = ["http://localhost:5173", "http://localhost:5174"]  # Our Svelte frontend (different ports)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=[frontend_url] + svelte_frontend_urls,
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
 # Include the API router

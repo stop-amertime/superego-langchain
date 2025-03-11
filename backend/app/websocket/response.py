@@ -5,7 +5,7 @@ This module provides standardized response formatting for WebSocket messages.
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ..models import WebSocketMessageType

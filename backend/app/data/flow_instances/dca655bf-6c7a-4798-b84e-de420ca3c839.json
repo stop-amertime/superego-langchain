@@ -1,0 +1,89 @@
+{
+  "id": "dca655bf-6c7a-4798-b84e-de420ca3c839",
+  "flow_definition_id": "102e8758-d780-4b1e-ad84-724d3fb68dcf",
+  "current_node": "input_superego",
+  "status": "error",
+  "name": "flowexample",
+  "description": null,
+  "messages": [
+    {
+      "id": "68a24a8a-d7ed-4449-ad6c-bf8667834d38",
+      "role": "user",
+      "content": "aa",
+      "timestamp": "2025-03-09T23:13:56.990212",
+      "decision": null,
+      "constitutionId": null,
+      "thinking": null,
+      "thinkingTime": null,
+      "withoutSuperego": null
+    }
+  ],
+  "history": [
+    {
+      "node_id": "input_superego",
+      "input": "aa",
+      "output": {
+        "graph": null,
+        "update": {
+          "superego_evaluation": {
+            "decision": "ALLOW",
+            "reason": "Your request appears to be safe and appropriate.",
+            "thinking": null,
+            "timestamp": null,
+            "constitutionId": null,
+            "status": null,
+            "id": null
+          }
+        },
+        "resume": null,
+        "goto": "assistant"
+      },
+      "timestamp": "2025-03-09T23:13:57.110342"
+    }
+  ],
+  "agent_states": {
+    "conversation_history": {
+      "turns": [
+        {
+          "id": "b2f798c3-42ff-4ee1-ac19-71bd7ae023ee",
+          "timestamp": "2025-03-09T23:13:57.029917",
+          "user_input": "aa",
+          "agent_responses": [
+            {
+              "node_id": "input_superego",
+              "content": {
+                "graph": null,
+                "update": {
+                  "superego_evaluation": {
+                    "decision": "ALLOW",
+                    "reason": "Your request appears to be safe and appropriate.",
+                    "thinking": null,
+                    "timestamp": null,
+                    "constitutionId": null,
+                    "status": null,
+                    "id": null
+                  }
+                },
+                "resume": null,
+                "goto": "assistant"
+              },
+              "timestamp": "2025-03-09T23:13:57.110342"
+            }
+          ],
+          "metadata": {
+            "last_node": "input_superego"
+          },
+          "flow_state": {
+            "current_node": "input_superego",
+            "next_node": null
+          }
+        }
+      ]
+    }
+  },
+  "tool_usages": [],
+  "parameters": {},
+  "created_at": "2025-03-09T23:13:54.408633",
+  "updated_at": "2025-03-09T23:13:57.179571",
+  "last_message_at": "2025-03-09T23:13:56.990212"
+}

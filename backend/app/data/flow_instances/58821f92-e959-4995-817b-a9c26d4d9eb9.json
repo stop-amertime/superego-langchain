@@ -1,0 +1,50 @@
+{
+  "id": "58821f92-e959-4995-817b-a9c26d4d9eb9",
+  "flow_definition_id": "102e8758-d780-4b1e-ad84-724d3fb68dcf",
+  "current_node": "input_superego",
+  "status": "completed",
+  "name": "x",
+  "description": null,
+  "messages": [
+    {
+      "id": "e70fd9bb-b0eb-4a25-9026-8656469e6cec",
+      "role": "user",
+      "content": "hello",
+      "timestamp": "2025-03-09T21:13:02.444233",
+      "decision": null,
+      "constitutionId": null,
+      "thinking": null,
+      "thinkingTime": null,
+      "withoutSuperego": null
+    }
+  ],
+  "history": [
+    {
+      "node_id": "input_superego",
+      "input": "hello",
+      "output": {
+        "graph": null,
+        "update": {
+          "superego_evaluation": {
+            "decision": "ALLOW",
+            "reason": "Your request appears to be safe and appropriate.",
+            "thinking": null,
+            "timestamp": null,
+            "constitutionId": null,
+            "status": null,
+            "id": null
+          }
+        },
+        "resume": null,
+        "goto": "assistant"
+      },
+      "timestamp": "2025-03-09T21:13:02.478311"
+    }
+  ],
+  "agent_states": {},
+  "tool_usages": [],
+  "parameters": {},
+  "created_at": "2025-03-09T20:44:24.660692",
+  "updated_at": "2025-03-09T21:13:02.484827",
+  "last_message_at": "2025-03-09T21:13:02.444233"
+}

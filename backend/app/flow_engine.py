@@ -324,29 +324,122 @@ class FlowEngine:
             node_func = self._create_node_function(node_id, node_config)
             builder.add_node(node_id, node_func)
         
-        # Add edges
-        for edge in definition.edges:
-            if edge.from_node == START_NODE:
-                builder.set_entry_point(edge.to_node)
-            elif edge.to_node == END_NODE:
-                builder.add_edge(edge.from_node, END)
+        # First, add the entry point
+        entry_edges = [edge for edge in definition.edges if edge.from_node == START_NODE]
+        if entry_edges:
+            builder.set_entry_point(entry_edges[0].to_node)
+        else:
+            logger.error("No entry point defined in flow definition")
+            # Default to first node if no entry point is defined
+            if definition.nodes:
+                first_node = next(iter(definition.nodes.keys()))
+                logger.warning(f"Using {first_node} as default entry point")
+                builder.set_entry_point(first_node)
             else:
-                if edge.condition:
-                    # Add conditional edge
-                    builder.add_conditional_edges(
-                        edge.from_node,
-                        self._create_condition_function(edge.condition),
-                        {
-                            True: edge.to_node,
-                            False: END
-                        }
-                    )
-                else:
-                    # Add normal edge
-                    builder.add_edge(edge.from_node, edge.to_node)
+                logger.error("No nodes defined in flow definition")
+                return builder.compile()  # Return an empty graph
+        
+        # Process conditional edges first
+        conditional_edges = {}
+        for edge in definition.edges:
+            if edge.from_node != START_NODE and edge.condition:
+                # Group conditional edges by from_node
+                if edge.from_node not in conditional_edges:
+                    conditional_edges[edge.from_node] = []
+                conditional_edges[edge.from_node].append(edge)
+        
+        # Add conditional edges
+        for from_node, edges in conditional_edges.items():
+            # Create a router function that will handle all conditions for this node
+            condition_routes = {}
+            
+            for edge in edges:
+                condition_key = edge.condition
+                to_node = END if edge.to_node == END_NODE else edge.to_node
+                condition_routes[condition_key] = to_node
+            
+            # Add a default "else" route to END if not specified
+            if "default" not in condition_routes and "else" not in condition_routes:
+                condition_routes["default"] = END
+            
+            # Add the conditional router
+            builder.add_conditional_edges(
+                from_node,
+                self._create_multi_condition_router(from_node, condition_routes),
+                condition_routes
+            )
+        
+        # Then add all regular non-conditional edges that aren't already handled
+        for edge in definition.edges:
+            # Skip START node edges (already handled as entry point)
+            if edge.from_node == START_NODE:
+                continue
+            
+            # Skip conditional edges (already processed above)
+            if edge.condition:
+                continue
+            
+            # Skip nodes that have conditional routing (handled by the router)
+            if edge.from_node in conditional_edges:
+                continue
+            
+            # Handle END node special case
+            if edge.to_node == END_NODE:
+                try:
+                    # Different versions of LangGraph handle END differently
+                    builder.add_edge(edge.from_node, END)
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Could not add edge to END using standard method: {e}")
+                    # Alternative method for older LangGraph versions
+                    try:
+                        builder.add_edge(edge.from_node, "__end__")
+                    except Exception as e2:
+                        logger.error(f"Could not add edge to END using alternate method: {e2}")
+                        # Last resort - try setting the end attribute dynamically
+                        try:
+                            end_value = getattr(builder, "END", "__end__")
+                            builder.add_edge(edge.from_node, end_value)
+                        except Exception as e3:
+                            logger.error(f"All methods to add END edge failed: {e3}")
+            else:
+                # Regular edge
+                builder.add_edge(edge.from_node, edge.to_node)
+        
+        # Log the graph structure for debugging
+        self._log_graph_structure(definition, conditional_edges)
         
         # Compile the graph
         return builder.compile()
+    
+    def _log_graph_structure(self, definition: FlowDefinition, conditional_edges: Dict):
+        """Log the graph structure for debugging."""
+        logger.info(f"Graph structure for flow '{definition.name}':")
+        logger.info(f"Nodes: {list(definition.nodes.keys())}")
+        
+        # Log entry point
+        entry_edges = [edge for edge in definition.edges if edge.from_node == START_NODE]
+        if entry_edges:
+            logger.info(f"Entry point: {entry_edges[0].to_node}")
+        else:
+            logger.info("No entry point defined")
+        
+        # Log conditional edges
+        if conditional_edges:
+            logger.info("Conditional edges:")
+            for from_node, edges in conditional_edges.items():
+                conditions = [f"{edge.condition} → {edge.to_node}" for edge in edges]
+                logger.info(f"  {from_node}: {', '.join(conditions)}")
+        
+        # Log regular edges
+        regular_edges = [edge for edge in definition.edges 
+                        if edge.from_node != START_NODE 
+                        and not edge.condition 
+                        and edge.from_node not in conditional_edges]
+        if regular_edges:
+            logger.info("Regular edges:")
+            for edge in regular_edges:
+                to_node = "END" if edge.to_node == END_NODE else edge.to_node
+                logger.info(f"  {edge.from_node} → {to_node}")
     
     def _create_node_function(self, node_id: str, node_config: NodeConfig):
         """
@@ -391,25 +484,100 @@ class FlowEngine:
                 # Get the input for the agent
                 input_text = state.get("user_input", "")
                 
+                # Log important details before node execution
+                logger.info(f"EXECUTING NODE {node_id} with input: {input_text}")
+                logger.info(f"Agent type: {agent.__class__.__name__}")
+                logger.info(f"Token callback present: {state.get('on_token') is not None}")
+                logger.info(f"Thinking callback present: {state.get('on_thinking') is not None}")
+                
                 # Get the context for the agent
                 context = {
                     "instance_id": instance_id,
                     "node_id": node_id,
                     "messages": instance.messages,
                     "agent_state": instance.agent_states.get(node_id, {}),
-                    "parameters": instance.parameters.get(node_id, {})
+                    "parameters": instance.parameters.get(node_id, {}),
+                    # Pass the token and thinking callbacks
+                    "on_token": state.get("on_token"),
+                    "on_thinking": state.get("on_thinking")
                 }
                 
                 # Process the input with the agent
-                output = await agent.process(input_text, context)
+                logger.info(f"Starting {node_id} agent processing")
+                try:
+                    output = await agent.process(input_text, context)
+                    logger.info(f"Agent {node_id} process() completed successfully")
+                except Exception as agent_error:
+                    logger.error(f"ERROR in agent {node_id}.process(): {str(agent_error)}")
+                    raise
                 
-                # Record the node execution
+                # Log detailed information about the node execution
+                logger.info(f"Node {node_id} executed with output: {output}")
+                
+                # If the output is a dict with a message object, add it to the instance messages
+                if isinstance(output, dict) and "message_object" in output:
+                    message_obj = output["message_object"]
+                    # Add to instance messages if not already there
+                    if not any(
+                        (hasattr(msg, "id") and msg.id == message_obj.get("id")) or 
+                        (isinstance(msg, dict) and msg.get("id") == message_obj.get("id")) 
+                        for msg in instance.messages
+                    ):
+                        instance.messages.append(message_obj)
+                    # Use the message as the output for history
+                    output_for_history = output.get("message", output)
+                else:
+                    output_for_history = output
+                
+                # Record in traditional node execution history (for backward compatibility)
                 node_execution = NodeExecution(
                     node_id=node_id,
                     input=input_text,
-                    output=output
+                    output=output_for_history
                 )
                 instance.history.append(node_execution)
+                
+                # Record in conversational history in agent_states
+                conversation_turn_id = state.get("conversation_turn_id")
+                if conversation_turn_id and "conversation_history" in instance.agent_states:
+                    try:
+                        # Find the current conversation turn in the agent_states
+                        turns = instance.agent_states["conversation_history"]["turns"]
+                        for turn in turns:
+                            if turn.get("id") == conversation_turn_id:
+                                # Create a record of this agent's response
+                                agent_response = {
+                                    "node_id": node_id,
+                                    "content": output_for_history,
+                                    "timestamp": datetime.now().isoformat()
+                                }
+                                
+                                # Add metadata if this is the superego
+                                if node_id == "input_superego" and isinstance(output, dict) and "update" in output:
+                                    if "superego_evaluation" in output["update"]:
+                                        se = output["update"]["superego_evaluation"]
+                                        agent_response["metadata"] = {
+                                            "decision": se.get("decision") if isinstance(se, dict) else se.decision,
+                                            "reason": se.get("reason") if isinstance(se, dict) else se.reason
+                                        }
+                                
+                                # Add to the conversation turn
+                                turn["agent_responses"].append(agent_response)
+                                
+                                # Update conversation metadata
+                                turn["metadata"]["last_node"] = node_id
+                                
+                                # Save the current flow state
+                                turn["flow_state"] = {
+                                    "current_node": node_id,
+                                    "next_node": output.get("goto") if isinstance(output, dict) else None
+                                }
+                                
+                                logger.info(f"Updated conversation turn {conversation_turn_id} with response from {node_id}")
+                                break
+                    except Exception as conv_error:
+                        logger.error(f"Error updating conversation structure: {str(conv_error)}")
+                        logger.exception(conv_error)
                 
                 # Update the instance
                 self.update_flow_instance(instance)
@@ -417,6 +585,7 @@ class FlowEngine:
                 # Check if the output is a Command object
                 if isinstance(output, dict) and "goto" in output:
                     # Convert to a Command object
+                    logger.info(f"Node {node_id} returning Command goto={output['goto']}")
                     return Command(
                         goto=output["goto"],
                         update=output.get("update", {})
@@ -437,52 +606,100 @@ class FlowEngine:
         
         return node_function
     
-    def _create_condition_function(self, condition: str):
+    def _create_multi_condition_router(self, node_id: str, condition_routes: Dict[str, str]):
         """
-        Create a condition function for a LangGraph StateGraph.
+        Create a condition router function that handles multiple conditions for a node.
         
         Args:
-            condition: The condition expression
+            node_id: The ID of the node this router is for
+            condition_routes: Dict mapping condition names to target nodes
             
         Returns:
-            A function that evaluates the condition
+            A router function that selects the next node
         """
-        def condition_function(state: Dict[str, Any]) -> bool:
+        def router_function(state: Dict[str, Any]) -> str:
             """
-            Condition function for a LangGraph StateGraph.
+            Router function for a LangGraph StateGraph.
             
             Args:
                 state: The current state of the graph
                 
             Returns:
-                True if the condition is met, False otherwise
+                The name of the next node to route to
             """
             try:
-                # Simple conditions for now
-                if condition == "ALLOW":
-                    # Check if the superego decision is ALLOW
-                    superego_evaluation = state.get("superego_evaluation")
-                    if superego_evaluation and superego_evaluation.decision == SuperegoDecision.ALLOW:
-                        return True
-                elif condition == "BLOCK":
-                    # Check if the superego decision is BLOCK
-                    superego_evaluation = state.get("superego_evaluation")
-                    if superego_evaluation and superego_evaluation.decision == SuperegoDecision.BLOCK:
-                        return True
-                elif condition == "CAUTION":
-                    # Check if the superego decision is CAUTION
-                    superego_evaluation = state.get("superego_evaluation")
-                    if superego_evaluation and superego_evaluation.decision == SuperegoDecision.CAUTION:
-                        return True
+                logger.info(f"ROUTER FOR NODE {node_id}: Evaluating with state keys: {list(state.keys())}")
                 
-                # Default to False
-                return False
+                # Handle explicit routing with Command objects
+                output = state.get('output', {})
+                if isinstance(output, dict) and 'goto' in output:
+                    next_node = output['goto']
+                    logger.info(f"Using explicit goto={next_node} from Command")
+                    if next_node in condition_routes.values():
+                        return next_node
+                
+                # First check if Command routing was added to state by the node
+                if "command_goto" in state:
+                    next_node = state["command_goto"]
+                    logger.info(f"Using command_goto={next_node} from state")
+                    if next_node in condition_routes.values():
+                        return next_node
+                
+                # Check if we have node-specific condition logic
+                if node_id == "input_superego":
+                    # Check for superego decision in various places
+                    se_decision = None
+                    
+                    # 1. In state.superego_evaluation
+                    if "superego_evaluation" in state:
+                        se = state["superego_evaluation"]
+                        se_decision = se.decision if hasattr(se, "decision") else se.get("decision")
+                        if se_decision:
+                            logger.info(f"Found superego decision {se_decision} in state.superego_evaluation")
+                    
+                    # 2. In state.output.update.superego_evaluation
+                    if not se_decision and isinstance(output, dict) and "update" in output:
+                        update = output["update"]
+                        if isinstance(update, dict) and "superego_evaluation" in update:
+                            se = update["superego_evaluation"]
+                            se_decision = se.decision if hasattr(se, "decision") else se.get("decision")
+                            if se_decision:
+                                logger.info(f"Found superego decision {se_decision} in output.update.superego_evaluation")
+                    
+                    # If we found a decision, use it for routing
+                    if se_decision:
+                        # Map decision to condition keys
+                        if se_decision == SuperegoDecision.ALLOW or se_decision == "ALLOW":
+                            if "ALLOW" in condition_routes:
+                                logger.info(f"Routing to {condition_routes['ALLOW']} based on ALLOW decision")
+                                return condition_routes["ALLOW"]
+                        elif se_decision == SuperegoDecision.BLOCK or se_decision == "BLOCK":
+                            if "BLOCK" in condition_routes:
+                                logger.info(f"Routing to {condition_routes['BLOCK']} based on BLOCK decision")
+                                return condition_routes["BLOCK"]
+                        elif se_decision == SuperegoDecision.CAUTION or se_decision == "CAUTION":
+                            if "CAUTION" in condition_routes:
+                                logger.info(f"Routing to {condition_routes['CAUTION']} based on CAUTION decision")
+                                return condition_routes["CAUTION"]
+                
+                # Check for a default route
+                if "default" in condition_routes:
+                    logger.info(f"Using default route to {condition_routes['default']}")
+                    return condition_routes["default"]
+                elif "else" in condition_routes:
+                    logger.info(f"Using else route to {condition_routes['else']}")
+                    return condition_routes["else"]
+                
+                # If we've exhausted all options, route to END
+                logger.warning(f"No suitable route found for {node_id}, routing to END")
+                return END
                 
             except Exception as e:
-                logger.error(f"Error evaluating condition {condition}: {e}")
-                return False
+                logger.error(f"Error in router for node {node_id}: {str(e)}")
+                logger.exception(e)
+                return END
         
-        return condition_function
+        return router_function
     
     def _get_agent_for_node(
         self, 
@@ -535,8 +752,8 @@ class FlowEngine:
         self, 
         instance_id: str, 
         user_input: str,
-        on_token: Optional[Callable[[str], None]] = None,
-        on_thinking: Optional[Callable[[str], None]] = None
+        on_token: Optional[Callable[[str, str, str], None]] = None,
+        on_thinking: Optional[Callable[[str, str, str], None]] = None
     ) -> Dict[str, Any]:
         """
         Process user input for a flow instance.
@@ -580,11 +797,31 @@ class FlowEngine:
             self.graphs[definition.id] = self.build_graph(definition)
         graph = self.graphs[definition.id]
         
-        # Set up the initial state
+        # Create or update conversation tracking structure in agent_states
+        # This implements a more conversational approach for history
+        conversation_turn_id = str(uuid.uuid4())
+        conversation_turn = {
+            "id": conversation_turn_id,
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "agent_responses": [],
+            "metadata": {},
+            "flow_state": {}
+        }
+        
+        # Store conversation in agent_states.conversation_history
+        if "conversation_history" not in instance.agent_states:
+            instance.agent_states["conversation_history"] = {"turns": []}
+        
+        instance.agent_states["conversation_history"]["turns"].append(conversation_turn)
+        self.update_flow_instance(instance)
+        
+        # Set up the initial state with the conversation turn ID
         state = {
             "instance_id": instance_id,
             "user_input": user_input,
             "messages": instance.messages,
+            "conversation_turn_id": conversation_turn_id,
             "on_token": on_token,
             "on_thinking": on_thinking
         }
@@ -594,7 +831,46 @@ class FlowEngine:
             instance.status = FlowStatus.RUNNING
             self.update_flow_instance(instance)
             
-            result = await graph.ainvoke(state)
+            # Critical fix: Explicitly reinitialize the graph to ensure proper traversal
+            # This forces LangGraph to rebuild the graph to ensure it traverses correctly
+            logger.critical("REINITIALIZING graph to ensure complete traversal")
+            self.graphs[definition.id] = self.build_graph(definition)
+            graph = self.graphs[definition.id]
+            
+            # Add detailed logging
+            logger.critical(f"Starting flow execution with arun, nodes: {list(definition.nodes.keys())}")
+            logger.critical(f"Graph state keys: {list(state.keys())}")
+            
+            # Use the appropriate async method to process the flow
+            try:
+                # Try different method names based on LangGraph version
+                if hasattr(graph, 'arun'):
+                    logger.info("Using graph.arun() method")
+                    result_state = await graph.arun(state)
+                elif hasattr(graph, 'ainvoke'):
+                    logger.info("Using graph.ainvoke() method")
+                    result_state = await graph.ainvoke(state)  
+                elif hasattr(graph, 'acall'):
+                    logger.info("Using graph.acall() method")
+                    result_state = await graph.acall(state)
+                else:
+                    # Fallback to invoke with asyncio.to_thread if no async methods exist
+                    logger.info("No async methods found, using graph.invoke() in a thread")
+                    result_state = await asyncio.to_thread(graph.invoke, state)
+                    
+                logger.critical(f"Flow execution COMPLETED with nodes: {list(definition.nodes.keys())}")
+                logger.critical(f"Final state keys: {list(result_state.keys())}")
+            except Exception as exc:
+                logger.error(f"Error during graph execution: {exc}")
+                logger.exception(exc)
+                raise
+            
+            # Create a result with the final state
+            result = {
+                "output": result_state.get("output", {}),
+                "last_node": result_state.get("last_node", "unknown"),
+                "messages": instance.messages  # Include the updated messages
+            }
             
             # Update the instance status
             if "error" in result:
@@ -616,8 +892,8 @@ class FlowEngine:
         self, 
         instance_id: str, 
         user_input: str,
-        on_token: Optional[Callable[[str], None]] = None,
-        on_thinking: Optional[Callable[[str], None]] = None
+        on_token: Optional[Callable[[str, str, str], None]] = None,
+        on_thinking: Optional[Callable[[str, str, str], None]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Stream the processing of user input for a flow instance.
@@ -663,11 +939,31 @@ class FlowEngine:
             self.graphs[definition.id] = self.build_graph(definition)
         graph = self.graphs[definition.id]
         
-        # Set up the initial state
+        # Create or update conversation tracking structure in agent_states
+        # This implements a more conversational approach for streaming
+        conversation_turn_id = str(uuid.uuid4())
+        conversation_turn = {
+            "id": conversation_turn_id,
+            "timestamp": datetime.now().isoformat(),
+            "user_input": user_input,
+            "agent_responses": [],
+            "metadata": {},
+            "flow_state": {}
+        }
+        
+        # Store conversation in agent_states.conversation_history
+        if "conversation_history" not in instance.agent_states:
+            instance.agent_states["conversation_history"] = {"turns": []}
+        
+        instance.agent_states["conversation_history"]["turns"].append(conversation_turn)
+        self.update_flow_instance(instance)
+        
+        # Set up the initial state with the conversation turn ID
         state = {
             "instance_id": instance_id,
             "user_input": user_input,
             "messages": instance.messages,
+            "conversation_turn_id": conversation_turn_id,
             "on_token": on_token,
             "on_thinking": on_thinking
         }
@@ -677,8 +973,32 @@ class FlowEngine:
             instance.status = FlowStatus.RUNNING
             self.update_flow_instance(instance)
             
-            # Stream the result
-            async for event_type, event_data in graph.astream(state):
+            # Critical fix: Explicitly reinitialize the graph to ensure proper traversal
+            logger.critical("REINITIALIZING graph to ensure complete streaming traversal")
+            self.graphs[definition.id] = self.build_graph(definition)
+            graph = self.graphs[definition.id]
+            
+            logger.critical(f"Starting STREAMING flow execution with nodes: {list(definition.nodes.keys())}")
+            
+            # Stream the result using the appropriate method
+            stream_method = None
+            if hasattr(graph, 'astream'):
+                stream_method = graph.astream
+            elif hasattr(graph, 'astream_events'):
+                stream_method = graph.astream_events
+            elif hasattr(graph, 'stream_events'):
+                # Wrap sync method in async generator
+                async def async_stream_wrapper(state):
+                    for event in graph.stream_events(state):
+                        yield event
+                stream_method = async_stream_wrapper
+            else:
+                logger.error("No streaming method found on graph object")
+                yield {"error": "No streaming method available"}
+                return
+            
+            # Use the identified streaming method
+            async for event_type, event_data in stream_method(state):
                 # Yield the event
                 yield {
                     "event_type": event_type,
@@ -687,7 +1007,8 @@ class FlowEngine:
                 
                 # Update the instance based on the event
                 if event_type == "node":
-                    # Update the current node
+                    # Update the current node and log it
+                    logger.info(f"PROCESSING NODE: {event_data}")
                     instance.current_node = event_data
                     self.update_flow_instance(instance)
                 elif event_type == "output":
@@ -699,6 +1020,9 @@ class FlowEngine:
             # Update the instance status
             instance.status = FlowStatus.COMPLETED
             self.update_flow_instance(instance)
+            
+            # Log completion
+            logger.info(f"FLOW COMPLETED: final node was {instance.current_node}")
             
         except Exception as e:
             logger.error(f"Error streaming user input: {e}")

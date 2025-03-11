@@ -85,8 +85,7 @@ class UserMessageHandler(MessageHandler):
             # Notify that the flow has started
             await self.send_flow_started(
                 client_id=client_id,
-                flow_instance_id=flow_instance_id,
-                flow_config_id=flow_instance.flow_config_id
+                flow_instance_id=flow_instance_id
             )
             
             # Process the user input
@@ -135,22 +134,52 @@ class UserMessageHandler(MessageHandler):
         Returns:
             A callback function
         """
-        async def on_token(node_id: str, token: str, message_id: str) -> None:
+        # Define a synchronous function that uses create_task to handle 
+        # the async send_node_token without requiring the caller to be async
+        def on_token(node_id: str, token: str, message_id: str) -> None:
             """
-            Callback for token streaming
+            Non-async callback for token streaming - creates an async task
             
             Args:
                 node_id: The node ID
                 token: The token
                 message_id: The message ID
             """
-            await self.send_node_token(
-                client_id=client_id,
-                node_id=node_id,
-                token=token,
-                message_id=message_id,
-                flow_instance_id=flow_instance_id
-            )
+            # Import asyncio here to avoid import cycles
+            import asyncio
+            
+            # Log that we received a token with detailed info for debugging
+            logger.info(f"TOKEN RECEIVED: node={node_id}, token={token}, message_id={message_id}, flow={flow_instance_id}")
+            
+            # Create an async function to send the token
+            async def _send_token():
+                from ..core import manager
+                
+                try:
+                    # Create the response directly - bypass the send_node_token method
+                    # which might have its own issues
+                    from ..response import WebSocketResponse
+                    response = WebSocketResponse.node_token(
+                        node_id=node_id,
+                        token=token,
+                        message_id=message_id,
+                        flow_instance_id=flow_instance_id
+                    )
+                    
+                    # Send the message directly through the connection manager
+                    await manager.send_message(response, client_id)
+                    
+                    # Debug logging - every 50 tokens, log that we're still sending
+                    # This can help identify if token streaming is working but the frontend
+                    # isn't displaying them
+                    if len(token) > 0 and hash(token) % 50 == 0:
+                        logger.info(f"TOKENS STILL STREAMING for node {node_id}")
+                except Exception as e:
+                    logger.error(f"ERROR SENDING TOKEN: {str(e)}")
+                    logger.exception(e)
+            
+            # Create and start a task to run in the background
+            asyncio.create_task(_send_token())
         
         return on_token
     

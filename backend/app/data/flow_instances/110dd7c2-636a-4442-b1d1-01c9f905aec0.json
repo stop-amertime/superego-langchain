@@ -1,0 +1,41 @@
+{
+  "id": "110dd7c2-636a-4442-b1d1-01c9f905aec0",
+  "flow_definition_id": "b2a71116-d1ca-405c-8695-ba3d77a4dfa5",
+  "current_node": null,
+  "status": "error",
+  "name": "Minimal Test Instance",
+  "description": "Test instance with simple direct routing",
+  "messages": [
+    {
+      "id": "69dc67d6-7b04-45e7-b4b0-893d993d8101",
+      "role": "user",
+      "content": "This is a simple test message",
+      "timestamp": "2025-03-09T23:06:06.080075",
+      "decision": null,
+      "constitutionId": null,
+      "thinking": null,
+      "thinkingTime": null,
+      "withoutSuperego": null
+    }
+  ],
+  "history": [],
+  "agent_states": {
+    "conversation_history": {
+      "turns": [
+        {
+          "id": "7061d1b1-2152-48d5-8a2f-823e400e2f9a",
+          "timestamp": "2025-03-09T23:06:06.108618",
+          "user_input": "This is a simple test message",
+          "agent_responses": [],
+          "metadata": {},
+          "flow_state": {}
+        }
+      ]
+    }
+  },
+  "tool_usages": [],
+  "parameters": {},
+  "created_at": "2025-03-09T23:06:06.066549",
+  "updated_at": "2025-03-09T23:06:06.150014",
+  "last_message_at": "2025-03-09T23:06:06.080075"
+}
