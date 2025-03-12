@@ -173,75 +173,165 @@ Transition conditions map directly to agent decision values:
 
 ## Component Interfaces
 
-### agents/superego.py
+### agents/superego.py ✅
 - **Purpose**: Evaluate messages against constitution values
-- **Function**: `superego_evaluate(input_message, constitution) -> decision, agent_guidance, thinking`
-- **Imports**: `langchain`
+- **Function**: `superego_evaluate(llm, input_message, constitution) -> decision, agent_guidance, thinking`
+- **Imports**: `langchain_core`, `pydantic`
 - **Returns**: Decision, agent_guidance, and thinking process
-- **Input**: Previous flow record step
-- **Output**: Stream of `{"partial_output": str, "complete": bool, "flow_step": dict}`
+- **Input**: LLM instance, input message, constitution text
+- **Output**: Stream of `StreamChunk` objects with partial and complete outputs
 - **Hidden Communication**: Uses `agent_guidance` field to pass context to inner agents
+- **Implementation Notes**:
+  - Uses LangChain's structured output parsing with Pydantic for reliable decision extraction
+  - Leverages async/await for non-blocking LLM calls and streaming
+  - Validates decision values and applies fallback to CAUTION if invalid
+  - Creates properly formatted FlowStep objects for graph execution
+  - Factory function `create_superego_node` generates compatible LangGraph nodes
 
-### agents/inner_agent.py
+### agents/inner_agent.py ✅
 - **Purpose**: Process inputs after Superego approval
-- **Function**: `process_with_tools(input_message, system_prompt, agent_guidance, available_tools) -> response, tool_usage`
-- **Imports**: `langchain`
-- **Returns**: Response and any tool usage records
-- **Input**: Previous flow record step (including any Superego agent_guidance)
-- **Output**: Stream of `{"partial_output": str, "complete": bool, "flow_step": dict}`
+- **Function**: `process_with_tools(llm, input_message, system_prompt, agent_guidance, agent_id, available_tools) -> response, tool_usage, agent_guidance, next_agent`
+- **Imports**: `langchain_core`, `pydantic`, `asyncio`
+- **Returns**: Response, tool usage records, agent guidance, and next agent
+- **Input**: LLM instance, input message, system prompt, agent guidance, agent ID, and available tools dictionary
+- **Output**: Stream of `StreamChunk` objects with partial and complete outputs
 - **Tool Usage**: Records tool calls and results in the flow step
+- **Implementation Notes**:
+  - Uses structured output parsing with Pydantic to ensure consistent format
+  - Supports both synchronous and asynchronous tools with unified interface
+  - Maintains streaming during tool execution with intermediate updates
+  - Dynamically handles self-transitions and recursive tool use
+  - Automatically validates and normalizes next_agent field for routing
+  - Creates organized FlowStep objects using functional composition pattern
 
-### agents/prompts.py
+### agents/prompts.py ✅
 - **Purpose**: Store prompt templates for agents
 - **Constants**:
   - `SUPEREGO_PROMPT`: Template for superego evaluation
   - `INNER_AGENT_PROMPT`: Template for inner agent
-- **Agent_Guidance Field Usage**: Templates should instruct agents on proper use of the agent_guidance field
+  - `STREAMING_RESPONSE_TEMPLATE`: Simplified template for streaming responses
+- **Agent_Guidance Field Usage**: Templates include detailed instructions on proper use of agent_guidance field
+- **Implementation Notes**:
+  - Prompt templates use clear sections to guide agent responses
+  - SUPEREGO_PROMPT focuses on constitutional evaluation with explicit decision structure
+  - INNER_AGENT_PROMPT emphasizes processing inputs based on superego approval
+  - Added specific fields needed for template formatting: agent_id, constitution, etc.
+  - Included explicit instructions for formatting thinking, decisions, and next steps
 
-### agents/commands.py
+### agents/commands.py ✅
 - **Purpose**: Define superego command constants
-- **Constants**: `BLOCK`, `ACCEPT`, `CAUTION`, `NEEDS_CLARIFICATION`
+- **Constants**: 
+  - **Superego decisions**: `BLOCK`, `ACCEPT`, `CAUTION`, `NEEDS_CLARIFICATION`
+  - **Inner agent decisions**: `COMPLETE`, `NEEDS_TOOL`, `NEEDS_RESEARCH`, `NEEDS_REVIEW`, `ERROR`
 - **No function calls or returns**
+- **Implementation Notes**: 
+  - Added inner agent decision constants beyond the basic superego commands
+  - Each constant has a descriptive comment explaining its purpose
+  - The implementation follows the ruthless minimalism principle with no unnecessary code
 
-### flow/builder.py
+### flow/builder.py ✅
 - **Purpose**: Construct LangGraph from flow definition
 - **Function**: `build_flow(flow_def: dict, llm) -> StateGraph`
 - **Imports**: `langgraph`, `agents.superego`, `agents.inner_agent`
 - **Returns**: Compiled StateGraph with cycle support
 - **Key Feature**: Handles agent transitions and recursion limits
+- **Implementation Notes**:
+  - Uses a dictionary-based approach to map node types to creator functions
+  - Creates a unified router that handles both superego and inner agent decisions
+  - Automatically handles self-transitions and recursion with flexible routing
+  - Passes only required parameters to node creation functions
+  - Implements error checking for invalid flow definitions
+  - Follows minimalist approach with flat structure and functional programming patterns
 
-### flow/executor.py
+### flow/executor.py ✅
 - **Purpose**: Execute flows and handle streaming
 - **Function**: `execute_flow(flow: StateGraph, input: str) -> AsyncGenerator[dict, None]`
 - **Imports**: `langgraph`, `anyio`
 - **Returns**: Stream of flow record steps with agent attribution
 - **User Visibility**: Filters out hidden fields (`thinking`, `agent_guidance`) from user-visible output
+- **Implementation Notes**:
+  - Uses async generator for efficient streaming without buffering
+  - Filters sensitive fields using dictionary comprehension
+  - Maintains flow state using LangGraph's native streaming
+  - Extracts latest step from state for incremental updates
+  - Follows minimalist approach with no unnecessary abstractions
 
-### flow/loader.py
+### flow/engine.py ✅
+- **Purpose**: Orchestrate flow execution and manage flow state
+- **Functions**: 
+  - `initialize_engine(constitutions_dir: str, flow_defs_dir: str) -> FlowEngine` - Initialize engine with constitutions and flows
+  - `FlowEngine.create_flow(flow_id: str, llm: Any) -> str` - Create a flow instance from a definition
+  - `FlowEngine.execute(instance_id: str, input_message: str) -> AsyncGenerator[Dict, None]` - Execute a flow with input
+  - `FlowEngine.get_flow_history(instance_id: str) -> List[Dict]` - Get history of a flow instance
+  - `FlowEngine.get_available_flows() -> List[Dict]` - Get list of available flow definitions
+- **Imports**: `uuid`, `datetime`, `asyncio`, `flow.builder`, `flow.executor`, `flow.loader`
+- **Returns**: Various - flow instance IDs, flow state, streaming execution results
+- **Key Feature**: Singleton pattern for global access with initialization function
+- **Implementation Notes**:
+  - Uses a singleton instance to avoid redundant engine instantiation
+  - Maintains flow state with dictionaries rather than classes
+  - Tracks flow history with immutable append-only arrays
+  - Creates user steps with proper agent routing information
+  - Bridges between flow definition loading and execution
+  - Manages both flow definitions (templates) and flow instances (executions)
+  - Provides a unified API for the entire flow system without abstracting away details
+
+### flow/loader.py ✅
 - **Purpose**: Load flow definitions
-- **Function**: `load_flow(path: str) -> dict`
-- **Imports**: `orjson`
-- **Returns**: Loaded flow definition with embedded constitutions
+- **Functions**: 
+  - `load_flow(path: str) -> dict` - Load a single flow definition
+  - `load_flows_from_directory(directory: str) -> List[dict]` - Load all flows from a directory
+  - `get_constitutions_map(directory: str) -> Dict[str, str]` - Load all constitutions
+  - `embed_constitutions(flow_def: dict, constitutions: Dict[str, str]) -> dict` - Embed constitutions into flow
+- **Imports**: `json`, `pathlib`
+- **Returns**: Loaded flow definitions with embedded constitutions
+- **Implementation Notes**:
+  - Uses standard library json module instead of orjson for simplicity
+  - Implements validation to ensure flow definitions have required structure
+  - Handles loading constitutions as markdown files and embedding them in flows
+  - Robust error handling with informative error messages
+  - Uses pathlib for cleaner file path operations
 
-### api/routes.py
+### api/routes.py ✅
 - **Purpose**: Define FastAPI endpoints
 - **Routes**:
   - `POST /flow/execute`: Execute flow with user input
   - `GET /flows`: List available flows
-- **Imports**: `fastapi`, `sse_starlette`, `flow.executor`
-- **Returns**: FastAPI route handlers
+  - `GET /flow/{flow_id}`: Get specific flow definition
+- **Imports**: `fastapi`, `pydantic`, `flow.loader`
+- **Returns**: FastAPI route handlers and SSE responses
+- **Implementation Notes**:
+  - Uses Pydantic models for request/response validation
+  - Creates a flow registry using the loader module
+  - Handles flow discovery and execution
+  - Uses dependency injection for sharing the flow registry
+  - Implements error handling for missing flows
+  - Sanitizes sensitive data from API responses
 
-### api/stream.py
+### api/stream.py ✅
 - **Purpose**: Handle SSE streaming
 - **Function**: `stream_response(generator: AsyncGenerator) -> EventSourceResponse`
-- **Imports**: `sse_starlette`, `anyio`
-- **Returns**: EventSourceResponse with filtered flow steps (hides internal fields)
+- **Imports**: `sse_starlette`, `asyncio`, `json`
+- **Returns**: EventSourceResponse with filtered flow steps
+- **Implementation Notes**:
+  - Implements Server-Sent Events (SSE) for streaming partial outputs
+  - Filters out sensitive fields like thinking, agent_guidance
+  - Handles different event types (partial_output vs complete_step)
+  - Includes error handling for streaming exceptions
+  - Sets proper headers for streaming compatibility with various clients
 
-### tools/calculator.py
+### tools/calculator.py ✅
 - **Purpose**: Implement simple calculator tool
 - **Function**: `calculate(expression) -> result`
-- **Imports**: None (standard library)
-- **Returns**: Calculated result
+- **Imports**: `re`, `math`, `operator` (all standard library)
+- **Returns**: Calculated result or error message
+- **Implementation Notes**:
+  - Includes robust error handling for various calculation scenarios
+  - Implements security checks to prevent code injection
+  - Uses a restricted execution environment with only safe operations
+  - Added `register_tools()` function for simple integration with the agent system
+  - Supports basic arithmetic, exponentiation, and common math functions
+  - Following the minimalism principle with focused functionality
 
 ## Implementation Guidelines
 
