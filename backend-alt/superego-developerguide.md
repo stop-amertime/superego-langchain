@@ -486,3 +486,13 @@ print(execute_example())
    - Can recurse to itself for multi-step tool use
    - Can transition to other specialized agents as needed
 7. All responses streamed back to user via SSE with complete flow steps
+
+And finally: ruthless minimalism is essential. Every token matters. Reject unnecessary abstractions, wrapper functions, and boilerplate. Never create a function that just transforms simple data or returns a single value from an array - use the data structure directly. 
+
+Remember: code is liability, not asset. Each line must justify its existence. No seven-step handlers where three will do. No classes when maps/arrays suffice. No getters/setters for what could be direct access. No multi-layered middleware for what could be a pure function.
+
+Comments should be sparse and focused only on explaining non-obvious logic. No documentation bloat that restates what code already shows. No endless TODOs. No line-by-line explanations of basic operations.
+
+Always prefer flat data over deep hierarchies. Choose composition over inheritance. Favor pure functions over stateful objects. Stream directly rather than buffering unnecessarily. Cut every corner that doesn't compromise core functionality.
+
+The mark of good system design isn't how much you add - it's how much you remove while preserving capability.
