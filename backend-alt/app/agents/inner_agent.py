@@ -16,7 +16,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
-from ..flow.engine import FlowStep, StreamChunk
+from ..models import FlowStep, StreamChunk
 from .commands import COMPLETE, NEEDS_TOOL, NEEDS_RESEARCH, NEEDS_REVIEW, ERROR, AWAITING_TOOL_CONFIRMATION
 from .prompts import INNER_AGENT_PROMPT
 

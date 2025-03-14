@@ -1,1067 +1,771 @@
-# Superego LangGraph API Documentation
+# Superego Agent System: API Documentation
 
-This document provides comprehensive documentation for the Superego LangGraph backend API, intended for frontend developers to integrate with the backend.
+## System Overview
 
-## Table of Contents
+The Superego Agent System is a research platform investigating "Superego" agents that monitor other agents according to defined values. The Superego acts as a value-based filter for both inputs and outputs, allowing systems to enforce ethical constraints through a defined constitution.
 
-1. [Overview](#overview)
-2. [Authentication](#authentication)
-3. [REST API Endpoints](#rest-api-endpoints)
-   - [Health Check](#health-check)
-   - [Constitutions API](#constitutions-api)
-   - [System Prompts API](#system-prompts-api)
-   - [Flow Definitions API](#flow-definitions-api)
-   - [Flow Instances API](#flow-instances-api)
-   - [Messages API](#messages-api)
-4. [WebSocket API](#websocket-api)
-   - [Connection](#connection)
-   - [Message Types](#message-types)
-   - [User Message Flow](#user-message-flow)
-   - [Flow Operations](#flow-operations)
-5. [Data Models](#data-models)
-   - [Message Models](#message-models)
-   - [Flow Models](#flow-models)
-   - [Agent Models](#agent-models)
-6. [Flow Engine](#flow-engine)
-   - [Concepts](#concepts)
-   - [Flow Configuration](#flow-configuration)
-   - [Node Types](#node-types)
-7. [Error Handling](#error-handling)
-8. [Best Practices](#best-practices)
+### Core Concept
 
-## Overview
+This system represents a novel approach to AI safety and alignment research where a "Superego" agent evaluates all inputs and outputs against a set of defined values or principles. The research focuses on how such a system can enforce ethical guardrails while still allowing specialized inner agents to perform their functions.
 
-The Superego LangGraph API provides both REST and WebSocket interfaces for interacting with the SuperEgo language model system. The API allows you to:
+Key research questions this system addresses:
+- How can value-based filtering improve AI safety?
+- What architectures enable effective agent monitoring?
+- How do different constitution formulations affect agent behavior?
+- Can monitoring agents effectively detect and prevent problematic outputs?
 
-- Create and manage constitutions (rule sets for message governance)
-- Configure and manage system prompts
-- Define and execute flows (sequences of AI operations)
-- Send messages and receive responses with SuperEgo evaluation
-- Process streaming responses in real-time
+### System Architecture
 
-The API is built with FastAPI and provides both synchronous REST endpoints and asynchronous WebSocket communication.
+- **Superego Agent**: Evaluates messages against a "constitution" of values, issuing commands to control flow
+- **Inner Agents**: Process inputs after Superego approval, with specialized capabilities (research, coding, etc.)
+- **Flow Control**: Agents can route messages to other agents or themselves recursively based on evaluation
+- **Streaming**: All agents support streaming partial responses throughout processing
+- **Hidden Communication**: Agents pass metadata in the "agent_guidance" field between each other (invisible to users)
 
-## Authentication
+Key design principles:
+- Minimal implementation focused on research, not production
+- Functional programming patterns with immutable flow records
+- Explicit tracking of agent identity and decision paths
 
-Currently, the API does not implement authentication. All endpoints are publicly accessible. However, the API requires a valid OpenRouter API key to be set in the environment variables for AI model calls to function correctly.
+## API Endpoints
 
-Required environment variable:
-- `OPENROUTER_API_KEY`: Your OpenRouter API key for accessing language models
-
-## REST API Endpoints
+The API is built using FastAPI and provides the following endpoints:
 
 ### Health Check
 
-#### `GET /`
+```
+GET /health
+```
 
-Check if the API server is running.
+Returns the API status and version.
 
 **Response:**
 ```json
 {
   "status": "ok",
-  "message": "Superego LangGraph API is running"
+  "version": "0.1.0"
 }
 ```
 
-#### `GET /api`
+### List Available Flows
 
-Check API status and configuration.
+```
+GET /flows
+```
+
+Returns a list of all available flow definitions.
 
 **Response:**
-```json
-{
-  "status": "ok",
-  "api_ready": true,
-  "config": {
-    "has_api_key": true
-  }
-}
-```
-
-### Constitutions API
-
-Constitutions define rules for message governance and are used by the SuperEgo to evaluate messages.
-
-#### `GET /api/constitutions/`
-
-Get all available constitutions.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "default": {
-      "id": "default",
-      "name": "Default Constitution",
-      "content": "..."
-    },
-    "strict": {
-      "id": "strict",
-      "name": "Strict Constitution",
-      "content": "..."
-    }
-  }
-}
-```
-
-#### `GET /api/constitutions/{constitution_id}`
-
-Get a specific constitution by ID.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "default",
-    "name": "Default Constitution",
-    "content": "..."
-  }
-}
-```
-
-#### `POST /api/constitutions/`
-
-Create a new constitution.
-
-**Request:**
-```json
-{
-  "id": "custom",
-  "name": "Custom Constitution",
-  "content": "# Custom rules\n1. Be helpful\n2. Be respectful"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "custom",
-    "name": "Custom Constitution",
-    "content": "# Custom rules\n1. Be helpful\n2. Be respectful"
-  },
-  "message": "Constitution 'Custom Constitution' created successfully"
-}
-```
-
-#### `PUT /api/constitutions/{constitution_id}`
-
-Update an existing constitution.
-
-**Request:**
-```json
-{
-  "name": "Updated Constitution",
-  "content": "# Updated rules\n1. Be helpful\n2. Be respectful\n3. Be accurate"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "custom",
-    "name": "Updated Constitution",
-    "content": "# Updated rules\n1. Be helpful\n2. Be respectful\n3. Be accurate"
-  },
-  "message": "Constitution 'Updated Constitution' updated successfully"
-}
-```
-
-#### `DELETE /api/constitutions/{constitution_id}`
-
-Delete a constitution. Protected constitutions (e.g., "default", "none") cannot be deleted.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Constitution 'Custom Constitution' deleted successfully"
-}
-```
-
-### System Prompts API
-
-System Prompts provide initial instructions to the assistant model.
-
-**Note:** The system prompts API endpoints follow the same pattern as the constitutions API. You can use similar endpoints to get, create, update, and delete system prompts.
-
-### Flow Definitions API
-
-Flow definitions describe the structure and behavior of AI processing flows.
-
-#### `GET /api/flow-definitions/`
-
-Get all flow definitions.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "default-flow",
-      "name": "Default Flow",
-      "description": "Standard processing flow with SuperEgo evaluation",
-      "nodes": {
-        "user_input": {
-          "type": "input",
-          "config": {}
-        },
-        "superego": {
-          "type": "superego",
-          "config": {
-            "constitution_id": "default"
-          }
-        },
-        "assistant": {
-          "type": "assistant",
-          "config": {
-            "model": "anthropic/claude-3-opus-20240229"
-          }
-        }
-      },
-      "edges": [
-        {
-          "from_node": "user_input",
-          "to_node": "superego"
-        },
-        {
-          "from_node": "superego",
-          "to_node": "assistant"
-        }
-      ],
-      "created_at": "2024-03-09T12:00:00.000Z",
-      "updated_at": "2024-03-09T12:00:00.000Z"
-    }
-  ]
-}
-```
-
-#### `GET /api/flow-definitions/{definition_id}`
-
-Get a specific flow definition by ID.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "default-flow",
-    "name": "Default Flow",
-    "description": "Standard processing flow with SuperEgo evaluation",
-    "nodes": {
-      "user_input": {
-        "type": "input",
-        "config": {}
-      },
-      "superego": {
-        "type": "superego",
-        "config": {
-          "constitution_id": "default"
-        }
-      },
-      "assistant": {
-        "type": "assistant",
-        "config": {
-          "model": "anthropic/claude-3-opus-20240229"
-        }
-      }
-    },
-    "edges": [
-      {
-        "from_node": "user_input",
-        "to_node": "superego"
-      },
-      {
-        "from_node": "superego",
-        "to_node": "assistant"
-      }
-    ],
-    "created_at": "2024-03-09T12:00:00.000Z",
-    "updated_at": "2024-03-09T12:00:00.000Z"
-  }
-}
-```
-
-#### `POST /api/flow-definitions/`
-
-Create a new flow definition.
-
-**Request:**
-```json
-{
-  "name": "Custom Flow",
-  "description": "Custom processing flow with multiple assistants",
-  "nodes": {
-    "user_input": {
-      "type": "input",
-      "config": {}
-    },
-    "superego": {
-      "type": "superego",
-      "config": {
-        "constitution_id": "strict"
-      }
-    },
-    "assistant_1": {
-      "type": "assistant",
-      "config": {
-        "model": "anthropic/claude-3-haiku-20240307"
-      }
-    },
-    "assistant_2": {
-      "type": "assistant",
-      "config": {
-        "model": "anthropic/claude-3-opus-20240229"
-      }
-    }
-  },
-  "edges": [
-    {
-      "from_node": "user_input",
-      "to_node": "superego"
-    },
-    {
-      "from_node": "superego",
-      "to_node": "assistant_1",
-      "condition": "decision == 'ALLOW'"
-    },
-    {
-      "from_node": "superego",
-      "to_node": "assistant_2",
-      "condition": "decision == 'CAUTION'"
-    }
-  ]
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "flow-12345",
-    "name": "Custom Flow",
-    "description": "Custom processing flow with multiple assistants",
-    "nodes": {
-      /* nodes from request */
-    },
-    "edges": [
-      /* edges from request */
-    ],
-    "created_at": "2024-03-09T15:30:00.000Z",
-    "updated_at": "2024-03-09T15:30:00.000Z"
-  },
-  "message": "Flow definition 'Custom Flow' created successfully"
-}
-```
-
-#### `PUT /api/flow-definitions/{definition_id}`
-
-Update an existing flow definition.
-
-**Request:**
-```json
-{
-  "name": "Updated Flow",
-  "description": "Updated flow description"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "flow-12345",
-    "name": "Updated Flow",
-    "description": "Updated flow description",
-    /* remaining fields unchanged */
-  },
-  "message": "Flow definition 'Updated Flow' updated successfully"
-}
-```
-
-#### `POST /api/flow-definitions/default`
-
-Create a default flow definition.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    /* default flow definition */
-  },
-  "message": "Default flow definition created successfully"
-}
-```
-
-### Flow Instances API
-
-Flow instances are running instances of flow definitions.
-
-#### `GET /api/flow-instances/`
-
-Get all flow instances.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "instance-12345",
-      "flow_definition_id": "default-flow",
-      "name": "Chat Session 1",
-      "description": "User conversation with default flow",
-      "current_node": "assistant",
-      "status": "running",
-      "created_at": "2024-03-09T14:00:00.000Z",
-      "updated_at": "2024-03-09T14:10:00.000Z",
-      "last_message_at": "2024-03-09T14:10:00.000Z"
-    }
-  ]
-}
-```
-
-#### `GET /api/flow-instances/{instance_id}`
-
-Get a specific flow instance by ID.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "instance-12345",
-    "flow_definition_id": "default-flow",
-    "name": "Chat Session 1",
-    "description": "User conversation with default flow",
-    "current_node": "assistant",
-    "status": "running",
-    "messages": [
-      /* list of messages in this flow instance */
-    ],
-    "history": [
-      /* list of node executions */
-    ],
-    "agent_states": {
-      /* states of agents in this flow */
-    },
-    "tool_usages": [
-      /* list of tool usages */
-    ],
-    "parameters": {
-      /* flow parameters */
-    },
-    "created_at": "2024-03-09T14:00:00.000Z",
-    "updated_at": "2024-03-09T14:10:00.000Z",
-    "last_message_at": "2024-03-09T14:10:00.000Z"
-  }
-}
-```
-
-#### `POST /api/flow-instances/`
-
-Create a new flow instance from a flow definition.
-
-**Request:**
-```json
-{
-  "flow_definition_id": "default-flow",
-  "name": "New Chat Session",
-  "description": "User conversation with default flow",
-  "parameters": {
-    "assistant": {
-      "model": "anthropic/claude-3-opus-20240229"
-    }
-  }
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "instance-67890",
-    "flow_definition_id": "default-flow",
-    "name": "New Chat Session",
-    "description": "User conversation with default flow",
-    "current_node": null,
-    "status": "created",
-    "messages": [],
-    "history": [],
-    "agent_states": {},
-    "tool_usages": [],
-    "parameters": {
-      "assistant": {
-        "model": "anthropic/claude-3-opus-20240229"
-      }
-    },
-    "created_at": "2024-03-09T15:30:00.000Z",
-    "updated_at": "2024-03-09T15:30:00.000Z",
-    "last_message_at": null
-  },
-  "message": "Flow instance 'New Chat Session' created successfully"
-}
-```
-
-#### `PUT /api/flow-instances/{instance_id}`
-
-Update an existing flow instance.
-
-**Request:**
-```json
-{
-  "name": "Updated Chat Session",
-  "description": "Updated description"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "instance-67890",
-    "name": "Updated Chat Session",
-    "description": "Updated description",
-    /* remaining fields unchanged */
-  },
-  "message": "Flow instance 'Updated Chat Session' updated successfully"
-}
-```
-
-#### `DELETE /api/flow-instances/{instance_id}`
-
-Delete a flow instance.
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Flow instance 'Updated Chat Session' deleted successfully"
-}
-```
-
-### Messages API
-
-The Messages API allows you to manage message stores, which contain conversations.
-
-#### `GET /api/messages/`
-
-Get all message stores with optional pagination.
-
-**Query Parameters:**
-- `limit` (optional): Limit the number of message stores
-- `offset` (optional): Offset for pagination
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "store-12345",
-      "messages": [
-        /* list of messages */
-      ],
-      "message_count": 10,
-      "last_updated": "2024-03-09T14:10:00.000Z"
-    }
-  ]
-}
-```
-
-#### `GET /api/messages/{message_store_id}`
-
-Get a specific message store by ID with optional pagination.
-
-**Query Parameters:**
-- `limit` (optional): Limit the number of messages
-- `offset` (optional): Offset for pagination
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "store-12345",
-    "messages": [
-      {
-        "id": "msg-1",
-        "role": "user",
-        "content": "Hello, world!",
-        "timestamp": "2024-03-09T14:00:00.000Z"
-      },
-      {
-        "id": "msg-2",
-        "role": "superego",
-        "content": "This message is allowed",
-        "timestamp": "2024-03-09T14:00:05.000Z",
-        "decision": "ALLOW",
-        "constitutionId": "default",
-        "thinking": "The message is harmless and friendly"
-      },
-      {
-        "id": "msg-3",
-        "role": "assistant",
-        "content": "Hello! How can I help you today?",
-        "timestamp": "2024-03-09T14:00:10.000Z"
-      }
-    ],
-    "total_messages": 3
-  }
-}
-```
-
-#### `POST /api/messages/`
-
-Create a new empty message store.
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "store-67890",
-    "messages": []
-  }
-}
-```
-
-#### `PUT /api/messages/{message_store_id}`
-
-Update a message store with new messages.
-
-**Request:**
 ```json
 [
   {
-    "id": "msg-1",
-    "role": "user",
-    "content": "Hello, world!",
-    "timestamp": "2024-03-09T14:00:00.000Z"
+    "id": "basic-calculator",
+    "name": "Basic Calculator",
+    "description": "A simple calculator flow with Superego monitoring"
   },
   {
-    "id": "msg-2",
-    "role": "assistant",
-    "content": "Hello! How can I help you today?",
-    "timestamp": "2024-03-09T14:00:10.000Z"
+    "id": "research-assistant",
+    "name": "Research Assistant",
+    "description": "Flow with research capabilities and value monitoring"
   }
 ]
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "store-67890",
-    "messages": [
-      /* messages from request */
-    ],
-    "message_count": 2
-  }
-}
+### Get Flow Definition
+
+```
+GET /flow/{flow_id}
 ```
 
-#### `DELETE /api/messages/{message_store_id}`
-
-Delete a message store.
+Returns the definition of a specific flow.
 
 **Response:**
 ```json
 {
-  "success": true,
-  "message": "Message store store-67890 deleted successfully"
-}
-```
-
-## WebSocket API
-
-The WebSocket API provides real-time, bidirectional communication for streaming responses, SuperEgo evaluations, and flow state updates.
-
-### Connection
-
-Connect to the WebSocket endpoint:
-
-```
-ws://your-server/ws/{client_id}
-```
-
-Where `client_id` is a unique identifier for the client. This can be any string, but using a UUID is recommended.
-
-### Message Types
-
-All WebSocket messages follow this format:
-
-```json
-{
-  "type": "message_type",
-  "content": { /* message-specific content */ },
-  "timestamp": "2024-03-09T14:00:00.000Z"
-}
-```
-
-#### Incoming Message Types (Client to Server)
-
-- `user_message`: Send a user message
-- `flow`: Perform flow operations
-
-#### Outgoing Message Types (Server to Client)
-
-- `user_message`: User message received
-- `superego_evaluation`: SuperEgo evaluation result
-- `assistant_message`: Complete assistant message
-- `assistant_token`: Single token from an assistant message (for streaming)
-- `tool_usage`: Tool usage information
-- `superego_intervention`: SuperEgo intervention
-- `error`: Error information
-- `system_message`: System message
-- `constitutions_response`: List of available constitutions
-- `rerun_from_constitution`: Response to a rerun request with a different constitution
-- `sysprompts_response`: List of available system prompts
-- `conversation_update`: Full conversation update
-- `flow_templates_response`: List of available flow templates
-- `flow_configs_response`: List of flow configurations
-- `flow_instances_response`: List of flow instances
-- `parallel_flows_result`: Result from running multiple flows
-- `flow_state_update`: Update on flow state changes
-- `flow_node_transition`: When flow transitions between nodes
-- `flow_node_thinking`: Thinking output from a node
-- `flow_node_output`: Output from a node
-- `flow_definition_response`: Response with flow definitions
-- `flow_completed`: When a flow completes
-- `flow_error`: When a flow encounters an error
-
-### User Message Flow
-
-To send a user message:
-
-```json
-{
-  "type": "user_message",
-  "content": {
-    "message": "Hello, world!",
-    "conversationId": "optional-conversation-id"
+  "name": "basic-calculator",
+  "description": "A simple calculator flow with Superego monitoring",
+  "graph": {
+    "start": "input_superego",
+    "nodes": {
+      "input_superego": {
+        "type": "superego",
+        "agent_id": "input_superego",
+        "constitution": "Be helpful and accurate... [truncated]",
+        "transitions": {
+          "BLOCK": null,
+          "ACCEPT": "calculator_agent",
+          "CAUTION": "calculator_agent",
+          "NEEDS_CLARIFICATION": "input_superego"
+        }
+      },
+      "calculator_agent": {
+        "type": "inner_agent",
+        "agent_id": "calculator",
+        "system_prompt": "You are a calculator agent...",
+        "transitions": {
+          "COMPLETE": null
+        }
+      }
+    }
   }
 }
 ```
 
-The server will respond with a series of messages:
+### Execute Flow
 
-1. First, a `user_message` acknowledgment
-2. Then, a `superego_evaluation` with the evaluation result
-3. If the message is allowed, streaming `assistant_token` messages
-4. Finally, a complete `assistant_message`
+```
+POST /flow/execute
+```
 
-Example responses:
+Executes a flow with the specified input and returns a streaming response.
 
+**Request Body:**
 ```json
 {
-  "type": "user_message",
-  "content": {
-    "id": "msg-1",
-    "role": "user",
-    "content": "Hello, world!",
-    "timestamp": "2024-03-09T14:00:00.000Z"
-  },
-  "timestamp": "2024-03-09T14:00:00.000Z"
+  "flow_id": "basic-calculator",
+  "input": "Calculate 5*10",
+  "conversation_id": "optional-conversation-id",
+  "metadata": {} 
 }
 ```
 
+**Response:**
+Server-Sent Events (SSE) stream with the following event types:
+
+- `partial_output`: Streaming chunks of the response
+- `complete_step`: Complete step information when an agent completes
+- `error`: Error information if something goes wrong
+
+Example events:
+
+```
+event: partial_output
+data: {"type":"partial_output","data":{"partial_output":"I'll help"}}
+
+event: partial_output
+data: {"type":"partial_output","data":{"partial_output":"I'll help you calculate that."}}
+
+event: complete_step
+data: {"type":"complete_step","data":{"step_id":"1","agent_id":"input_superego","timestamp":"2023-11-15T10:30:46Z","role":"assistant","input":"Calculate 5*10","decision":"ACCEPT","response":"I'll help you calculate that."}}
+
+event: partial_output
+data: {"type":"partial_output","data":{"partial_output":"The result of 5*10 is "}}
+
+event: partial_output
+data: {"type":"partial_output","data":{"partial_output":"The result of 5*10 is 50."}}
+
+event: complete_step
+data: {"type":"complete_step","data":{"step_id":"2","agent_id":"calculator","timestamp":"2023-11-15T10:30:47Z","role":"assistant","input":"Calculate 5*10","response":"The result of 5*10 is 50.","tool_usage":{"tool_name":"calculator","input":"5*10","output":"50"}}}
+```
+
+### Tool Execution Confirmation
+
+```
+POST /flow/{instance_id}/confirm_tool
+```
+
+Confirms or denies a pending tool execution.
+
+**Request Body:**
 ```json
 {
-  "type": "superego_evaluation",
-  "content": {
-    "decision": "ALLOW",
-    "reason": "The message is harmless and friendly",
-    "thinking": "Detailed thinking process...",
-    "timestamp": "2024-03-09T14:00:05.000Z",
-    "constitutionId": "default"
-  },
-  "timestamp": "2024-03-09T14:00:05.000Z"
+  "tool_execution_id": "execution-id",
+  "confirmed": true
 }
 ```
 
+**Response:**
 ```json
 {
-  "type": "assistant_token",
-  "content": {
-    "token": "Hello",
-    "conversationId": "conv-12345"
+  "status": "success",
+  "result": {
+    "tool_name": "calculator",
+    "input": "5*10",
+    "output": "50"
   },
-  "timestamp": "2024-03-09T14:00:06.000Z"
+  "message": "Tool calculator executed successfully"
 }
 ```
 
+### Update Tool Confirmation Settings
+
+```
+POST /flow/{instance_id}/confirmation_settings
+```
+
+Updates tool confirmation settings for a flow instance.
+
+**Request Body:**
 ```json
 {
-  "type": "assistant_message",
-  "content": {
-    "id": "msg-3",
-    "role": "assistant",
-    "content": "Hello! How can I help you today?",
-    "timestamp": "2024-03-09T14:00:10.000Z"
-  },
-  "timestamp": "2024-03-09T14:00:10.000Z"
+  "confirm_all": false,
+  "exempted_tools": ["calculator", "search"]
 }
 ```
 
-### Flow Operations
-
-To perform flow operations:
-
+**Response:**
 ```json
 {
-  "type": "flow",
-  "content": {
-    "operation": "start",
-    "flow_instance_id": "instance-12345",
-    "user_input": "Hello, world!"
+  "status": "success",
+  "message": "Tool confirmation settings updated",
+  "settings": {
+    "confirm_all": false,
+    "exempted_tools": ["calculator", "search"]
   }
 }
 ```
 
-Available operations:
-- `start`: Start a flow instance with user input
-- `pause`: Pause a running flow instance
-- `resume`: Resume a paused flow instance
-- `stop`: Stop a running flow instance
-- `get_instance`: Get a flow instance by ID
-- `list_instances`: List all flow instances
-- `create_instance`: Create a new flow instance
-- `update_instance`: Update a flow instance
-- `delete_instance`: Delete a flow instance
+### Get Tool Confirmation Settings
+
+```
+GET /flow/{instance_id}/confirmation_settings
+```
+
+Gets current tool confirmation settings for a flow instance.
+
+**Response:**
+```json
+{
+  "confirm_all": true,
+  "exempted_tools": []
+}
+```
 
 ## Data Models
 
-### Message Models
+### Complete Flow Step Structure
 
-#### Message
-```typescript
-{
-  id: string;
-  role: 'user' | 'assistant' | 'superego' | 'system';
-  content: string;
-  timestamp: string;
-  decision?: 'ALLOW' | 'BLOCK' | 'CAUTION' | 'ANALYZING' | 'ERROR';
-  constitutionId?: string;
-  thinking?: string;
-  thinkingTime?: string;
-  withoutSuperego?: string;
-}
-```
-
-#### SuperegoEvaluation
-```typescript
-{
-  decision: 'ALLOW' | 'BLOCK' | 'CAUTION' | 'ANALYZING' | 'ERROR';
-  reason: string;
-  thinking?: string;
-  timestamp?: string;
-  constitutionId?: string;
-  status?: string;
-  id?: string;
-}
-```
-
-### Flow Models
-
-#### NodeConfig
-```typescript
-{
-  type: string;
-  config: Record<string, any>;
-}
-```
-
-#### EdgeConfig
-```typescript
-{
-  from_node: string;
-  to_node: string;
-  condition?: string;
-}
-```
-
-#### FlowDefinition
-```typescript
-{
-  id: string;
-  name: string;
-  description?: string;
-  nodes: Record<string, NodeConfig>;
-  edges: EdgeConfig[];
-  created_at: string;
-  updated_at: string;
-}
-```
-
-#### FlowConfig
-```typescript
-{
-  id: string;
-  name: string;
-  constitution_id: string;
-  sysprompt_id?: string;
-  superego_enabled: boolean;
-  description?: string;
-  created_at: string;
-  updated_at: string;
-}
-```
-
-#### FlowInstance
-```typescript
-{
-  id: string;
-  flow_definition_id: string;
-  current_node?: string;
-  status: 'created' | 'running' | 'paused' | 'completed' | 'error';
-  name: string;
-  description?: string;
-  messages: Message[];
-  history: NodeExecution[];
-  agent_states: Record<string, Record<string, any>>;
-  tool_usages: ToolUsage[];
-  parameters: Record<string, Record<string, any>>;
-  created_at: string;
-  updated_at: string;
-  last_message_at?: string;
-}
-```
-
-### Agent Models
-
-#### AgentState
-```typescript
-{
-  conversation_id: string;
-  messages: Message[];
-  user_input: string;
-  superego_evaluation?: SuperegoEvaluation;
-  current_output: string;
-  interrupted: boolean;
-  tools_used: Array<Record<string, any>>;
-}
-```
-
-#### ToolUsage
-```typescript
-{
-  tool_name: string;
-  input_data: Record<string, any>;
-  output: any;
-  timestamp: string;
-}
-```
-
-## Flow Engine
-
-The Flow Engine manages the execution of flows, which are sequences of operations performed on messages.
-
-### Concepts
-
-- **Flow Definition**: A blueprint that defines the structure of a flow, including nodes and edges.
-- **Flow Instance**: A running instance of a flow definition with its own state and history.
-- **Node**: A processing unit in a flow (e.g., user input, SuperEgo evaluation, assistant response).
-- **Edge**: A connection between nodes that defines the flow of data.
-- **Node Execution**: A record of a node's execution, including input and output.
-
-### Flow Configuration
-
-Flow configurations define how a flow should be executed, including which constitution and system prompt to use.
+Each step in the flow represents an operation by a specific agent. The complete structure includes:
 
 ```json
 {
-  "id": "config-12345",
-  "name": "Default Configuration",
-  "constitution_id": "default",
-  "sysprompt_id": "assistant_default",
-  "superego_enabled": true,
-  "description": "Default configuration with SuperEgo"
+  "step_id": str,         // Unique identifier for this step in the flow
+  "agent_id": str,        // Identifier for specific agent: "superego", "research", "coding", etc.
+  "timestamp": str,       // ISO timestamp when this step occurred
+  "role": str,            // "user", "assistant", or "system"
+  "input": str,           // Input message/content this agent received
+  
+  // Agent-specific fields - only one set will be present based on agent type
+  // Superego-specific fields
+  "constitution": str,    // For superego: the actual constitution text used
+  "decision": str,        // BLOCK, ACCEPT, CAUTION, or NEEDS_CLARIFICATION
+  
+  // Inner agent-specific fields
+  "system_prompt": str,   // Inner agent system instructions
+  "tool_usage": {         // Present when tools are used
+      "tool_name": str,
+      "input": any,
+      "output": any
+  },
+  
+  // Common fields for all agents
+  "thinking": str,        // Agent's reasoning process (not shown to user)
+  "agent_guidance": str,  // Hidden inter-agent communication - passes context between agents
+  "response": str,        // The agent's visible response to the user
+  "next_agent": str       // The next agent to call (or null if flow ends)
 }
 ```
 
-### Node Types
+**Important Notes for Frontend Developers:**
+1. The fields `thinking` and `agent_guidance` are internal and not exposed in client-facing APIs
+2. The complete structure is shown here for understanding, but client APIs will only receive a filtered subset
+3. Different agent types will have different fields present (Superego vs Inner Agent)
 
-- **input**: Represents user input
-- **superego**: Performs SuperEgo evaluation
-- **assistant**: Generates assistant responses
-- **tool**: Executes a tool or function
+### Flow Record
 
-Example node configuration:
+A flow record is an array of step records tracking the entire conversation history. This is crucial for frontend developers to understand the full conversation flow:
+
+```json
+[
+  {
+    "step_id": "1",
+    "agent_id": "user",
+    "timestamp": "2023-11-15T10:30:45Z",
+    "role": "user",
+    "input": null,
+    "response": "Calculate 5*10",
+    "next_agent": "input_superego"
+  },
+  {
+    "step_id": "2",
+    "agent_id": "input_superego",
+    "timestamp": "2023-11-15T10:30:46Z",
+    "role": "assistant",
+    "input": "Calculate 5*10",
+    "constitution": "Be helpful, accurate, and verify calculations before providing answers.",
+    "thinking": "This appears to be a simple calculation request.",
+    "decision": "CAUTION",
+    "agent_guidance": "Request is acceptable but requires verification. Inner agent should double-check result.",
+    "response": "I'll help you calculate that.",
+    "next_agent": "calculator_agent"
+  },
+  {
+    "step_id": "3",
+    "agent_id": "calculator_agent",
+    "timestamp": "2023-11-15T10:30:47Z",
+    "role": "assistant",
+    "input": "Calculate 5*10",
+    "system_prompt": "You are a calculator agent that performs arithmetic operations.",
+    "thinking": "I need to multiply 5 by 10",
+    "agent_guidance": "Calculation verified using tool. Confidence: high.",
+    "response": "I'll calculate 5*10 for you",
+    "tool_usage": {
+      "tool_name": "calculator", 
+      "input": "5*10", 
+      "output": "50"
+    },
+    "next_agent": "research_agent"
+  },
+  {
+    "step_id": "4",
+    "agent_id": "research_agent",
+    "timestamp": "2023-11-15T10:30:48Z",
+    "role": "assistant",
+    "input": "Calculate 5*10",
+    "system_prompt": "You are a research agent that provides comprehensive answers.",
+    "response": "The result of 5*10 is 50.",
+    "next_agent": null
+  }
+]
+```
+
+### Superego Commands
+
+Superego agents use these standardized commands to control flow. Frontend developers should be aware of these as they directly impact conversation flow and UI state:
+
+```
+BLOCK = "BLOCK"     # Reject the input entirely, conversation ends
+ACCEPT = "ACCEPT"   # Allow the input without special handling
+CAUTION = "CAUTION" # Allow with warning (agent_guidance passed to inner agent)
+NEEDS_CLARIFICATION = "NEEDS_CLARIFICATION"  # Recurse to get more info from user
+```
+
+### Inner Agent Commands
+
+Inner agents use these commands to control their flow:
+
+```
+COMPLETE = "COMPLETE"           # End flow execution
+NEEDS_TOOL = "NEEDS_TOOL"       # Self-loop for tool usage
+NEEDS_RESEARCH = "NEEDS_RESEARCH"  # Transition to research agent
+NEEDS_REVIEW = "NEEDS_REVIEW"   # Transition to review agent
+ERROR = "ERROR"                 # Transition to error handler
+```
+
+## Flow Definition Schema
+
+Flow definitions specify the agent graph structure and transition rules. This is crucial for frontend developers to understand the possible conversation paths:
 
 ```json
 {
-  "type": "assistant",
-  "config": {
-    "model": "anthropic/claude-3-opus-20240229",
-    "temperature": 0.7,
-    "max_tokens": 1000
+  "name": str,
+  "description": str,
+  "graph": {
+    "start": str,  // Starting node name
+    "nodes": {
+      "node_name": {
+        "type": str,      // "superego" or "inner_agent"
+        "agent_id": str,  // Unique identifier for the agent
+        "max_iterations": int,  // Maximum self-recursion count
+        
+        // Agent-specific configuration
+        "constitution": str,  // For superego: full constitution text
+        "system_prompt": str,  // For inner agents: system instructions
+        "tools": [str],        // For inner agents: available tools
+        
+        // Flow control - defines where to go next based on agent decision
+        "transitions": {
+          "condition": str  // Next node name, null (end), or self (recursion)
+        }
+      }
+    }
   }
 }
 ```
 
-## Error Handling
+### Transition Rules
 
-The API returns standard HTTP error codes:
+Transition conditions map directly to agent decision values. These determine the flow of the conversation:
 
-- `400 Bad Request`: Invalid request format or parameters
-- `404 Not Found`: Resource not found
-- `500 Internal Server Error`: Server-side error
+```
+# Superego transitions
+"transitions": {
+    "BLOCK": null,              # End flow
+    "ACCEPT": "inner_agent",    # Go to inner agent 
+    "CAUTION": "inner_agent",   # Go to inner agent with warning
+    "NEEDS_CLARIFICATION": "self"  # Loop back to self
+}
 
-WebSocket errors are sent with the `error` message type:
-
-```json
-{
-  "type": "error",
-  "content": {
-    "message": "Error description",
-    "error_code": "ERROR_CODE"
-  },
-  "timestamp": "2024-03-09T14:00:00.000Z"
+# Inner Agent transitions
+"transitions": {
+    "COMPLETE": null,          # End flow
+    "NEEDS_TOOL": "self",      # Self-loop for tool usage
+    "ERROR": "error_handler"   # Go to error handler
 }
 ```
 
-Common error codes:
-- `INVALID_JSON`: Invalid JSON received
-- `UNKNOWN_MESSAGE_TYPE`: Unknown WebSocket message type
-- `INTERNAL_ERROR`: Server-side error
-- `FLOW_NOT_FOUND`: Flow instance not found
-- `FLOW_EXECUTION_ERROR`: Error executing flow
+## Streaming Protocol
 
-## Best Practices
+All agents in the system yield partial outputs as they're generated, which is crucial for frontend developers to implement a responsive UI:
 
-1. **Use WebSockets for Interactive Features**
-   - WebSockets provide real-time updates and streaming responses
-   - Ideal for chat interfaces and live updates
+- Streaming format: `{"partial_output": str, "complete": bool, "flow_step": dict}`
+- Partial outputs contain incomplete responses during generation
+- Complete=True indicates the final chunk with the full flow step
 
-2. **Manage Flow Instances**
-   - Create a new flow instance for each conversation
-   - Use flow parameters to customize behavior
-   - Delete unused flow instances to save resources
+The API uses Server-Sent Events (SSE) for streaming results back to the client. The client should handle these event types:
 
-3. **Handle SuperEgo Decisions**
-   - Always check the SuperEgo decision before displaying assistant responses
-   - Provide appropriate UI for different decisions (ALLOW, BLOCK, CAUTION)
+1. `partial_output`: Contains incremental content updates during agent processing
+2. `complete_step`: Contains a complete step record when an agent finishes
+3. `error`: Contains error information if something goes wrong
 
-4. **Error Handling**
-   - Implement robust error handling for both REST and WebSocket APIs
-   - Display user-friendly error messages
-   - Retry operations when appropriate
+Example client-side code for handling the stream:
 
-5. **Performance Considerations**
-   - WebSocket connections should be established once and reused
-   - Use pagination for large data sets
-   - Consider caching frequent requests like constitutions and system prompts
+```javascript
+const eventSource = new EventSource('/flow/execute');
+
+eventSource.addEventListener('partial_output', (event) => {
+  const data = JSON.parse(event.data);
+  // Update UI with streaming content
+  appendToOutput(data.data.partial_output);
+});
+
+eventSource.addEventListener('complete_step', (event) => {
+  const data = JSON.parse(event.data);
+  // Handle complete step data
+  processCompleteStep(data.data);
+});
+
+eventSource.addEventListener('error', (event) => {
+  const data = JSON.parse(event.data);
+  // Handle error
+  showError(data.data.message);
+  eventSource.close();
+});
+```
+
+## Inter-Agent Communication
+
+The `agent_guidance` field is a critical feature for inter-agent communication, though it's not directly exposed to frontend clients. Understanding this concept helps frontend developers visualize the agent interactions in their UI:
+
+- Agent_guidance is never shown to users but is crucial for agent coordination
+- It allows agents to pass context, warnings, or guidance to subsequent agents
+- The Superego might accept a request but include guidance about potential concerns
+
+Examples of effective agent_guidance messages that might influence the flow (not shown to users):
+- "Request appears benign but contains ambiguous elements. Monitor for potential escalation."
+- "Mathematical verification needed. Previous agent uncertain about calculation."
+- "User seems frustrated. Consider acknowledging difficulty before answering."
+
+## State Management
+
+For frontend developers implementing conversation history and state:
+
+- All flow steps are treated as immutable
+- New steps are appended rather than modifying existing ones
+- The system uses functional patterns for state updates
+- Each step includes all necessary context
+
+## Recursion and Cycles
+
+Agents can call themselves or other agents. This is important to understand for implementing UI that can represent these complex flows:
+
+- Track iteration counts per node to prevent infinite loops
+- Self-transitions have explicit termination conditions
+- Each agent determines when recursion is complete
+
+## Creating Custom Flows
+
+To create a custom flow (useful for frontend developers building flow editors or visualizers):
+
+1. Define your flow in a JSON file in the `app/data/flow_definitions/` directory
+2. Add any constitutions needed in the `app/data/constitutions/` directory
+3. Follow the Flow Definition Schema shown above
+
+Example minimal flow definition:
+
+```json
+{
+  "name": "Simple Calculator",
+  "description": "A basic calculator with value monitoring",
+  "graph": {
+    "start": "input_superego",
+    "nodes": {
+      "input_superego": {
+        "type": "superego",
+        "agent_id": "input_superego",
+        "constitution": "default",
+        "transitions": {
+          "ACCEPT": "calculator",
+          "CAUTION": "calculator",
+          "BLOCK": null,
+          "NEEDS_CLARIFICATION": "input_superego"
+        }
+      },
+      "calculator": {
+        "type": "inner_agent",
+        "agent_id": "calculator",
+        "system_prompt": "You are a helpful calculator that solves math problems.",
+        "tools": ["calculator"],
+        "transitions": {
+          "COMPLETE": null,
+          "NEEDS_TOOL": "calculator"
+        }
+      }
+    }
+  }
+}
+```
+
+## Enhanced Multi-Agent Flow Example
+
+For more complex applications, here's an example of a multi-agent flow that demonstrates how different specialized agents can work together:
+
+```json
+{
+  "name": "multi_agent_flow",
+  "description": "Flow with multiple agent types",
+  "graph": {
+    "start": "input_superego",
+    "nodes": {
+      "input_superego": {
+        "type": "superego",
+        "agent_id": "input_superego",
+        "constitution": "Be helpful and accurate. Verify calculations before providing answers. Reject harmful requests.",
+        "max_iterations": 3,
+        "transitions": {
+          "BLOCK": null,
+          "ACCEPT": "research_agent",
+          "CAUTION": "research_agent",
+          "NEEDS_CLARIFICATION": "input_superego"
+        }
+      },
+      "research_agent": {
+        "type": "inner_agent",
+        "agent_id": "research_agent",
+        "system_prompt": "You are a helpful research assistant that provides accurate information.",
+        "tools": ["calculator", "search"],
+        "max_iterations": 5,
+        "transitions": {
+          "COMPLETE": "code_agent",
+          "NEEDS_TOOL": "research_agent",
+          "NEEDS_REVIEW": "input_superego"
+        }
+      },
+      "code_agent": {
+        "type": "inner_agent",
+        "agent_id": "code_agent",
+        "system_prompt": "You are a coding assistant that writes clean, efficient code.",
+        "tools": ["code_analyzer"],
+        "max_iterations": 3,
+        "transitions": {
+          "COMPLETE": "output_superego",
+          "NEEDS_REFINEMENT": "code_agent",
+          "NEEDS_RESEARCH": "research_agent"
+        }
+      },
+      "output_superego": {
+        "type": "superego",
+        "agent_id": "output_superego",
+        "constitution": "Ensure all outputs are accurate, helpful, and free from harmful content.",
+        "max_iterations": 2,
+        "transitions": {
+          "BLOCK": "code_agent",
+          "ACCEPT": null,
+          "CAUTION": null
+        }
+      }
+    }
+  }
+}
+```
+
+## Flow Execution Process
+
+Understanding the overall flow execution process is essential for frontend developers:
+
+1. User input → API
+2. API passes input to Flow Controller
+3. Flow begins execution at Superego
+4. Superego streams thinking and evaluation process
+   - Constitution is embedded directly in the flow step
+5. Superego issues command
+   - If BLOCK: return explanation to user
+   - If ACCEPT/CAUTION: pass to Inner Agent with optional agent_guidance
+   - If NEEDS_CLARIFICATION: recurse to itself (with iteration limit)
+6. Inner Agent streams thinking process and tool usage
+   - Tool calls and results are embedded directly in the flow step
+   - Each agent identifies itself with a unique agent_id
+   - Can recurse to itself for multi-step tool use
+   - Can transition to other specialized agents as needed
+7. All responses streamed back to user via SSE with complete flow steps
+
+## Environment Configuration
+
+The API server can be configured using these environment variables:
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `PORT` | HTTP server port | 8000 |
+| `HOST` | HTTP server host | 0.0.0.0 |
+| `BASE_MODEL` | Default LLM model | anthropic/claude-3.5-sonnet |
+| `SUPEREGO_MODEL` | Model for superego agents | anthropic/claude-3.5-sonnet:thinking |
+| `FRONTEND_URL` | CORS allowed origin | http://localhost:3000 |
+| `OPENROUTER_API_KEY` | API key for OpenRouter | None |
+| `FLOWS_DIRECTORY` | Path to flow definitions | app/data/flow_definitions |
+| `CONSTITUTIONS_DIRECTORY` | Path to constitutions | app/data/constitutions |
+
+## Dependencies
+
+Understanding the system dependencies helps frontend developers set appropriate expectations:
+
+- `langgraph` - For agent orchestration with cycle support
+- `langchain` - For pre-built agent structures and tool interfaces
+- `fastapi` - For API endpoints
+- `sse-starlette` - For streaming
+- `anyio` - For simplified async operations
+- `pydantic` - For validation and serialization
+- `orjson` - For JSON handling
+
+## Frontend Integration Guidelines
+
+When building a frontend for this API, consider these guidelines:
+
+### 1. Streaming UI Design
+
+Create a streaming-first interface:
+- Show typing indicators during partial outputs
+- Update progressively as content arrives
+- Distinguish between different agent types visually
+- Use animations or transitions for a fluid experience
+- Implement buffering for smoother display of rapid stream chunks
+
+### 2. Agent Identification
+
+Help users understand which agent is responding:
+- Color-code or visually distinguish different agent types (Superego vs Inner agents)
+- Show appropriate icons for different agent types (shield for Superego, tools for specific agents)
+- Clearly label which agent is currently responding
+- Consider tooltips explaining agent roles and capabilities
+- Use consistent visual language across the interface
+
+### 3. Superego Visibility
+
+Make the evaluation process transparent to users:
+- Make Superego evaluation results visible to users when appropriate
+- Show decision type (ACCEPT, BLOCK, CAUTION) with distinct visual treatments
+- Consider collapsible sections for Superego evaluations
+- Use color-coding for different decision types (green for ACCEPT, yellow for CAUTION, red for BLOCK)
+- Allow users to view or hide this information based on preference
+
+### 4. Tool Usage Visualization
+
+Represent tool usage clearly:
+- Show tool usage in a structured way
+- Display tool inputs and outputs clearly
+- Consider syntax highlighting for code outputs
+- Use expandable/collapsible sections for tool calls
+- Implement visualizations for numerical or data-heavy tool results
+- Show loading states during tool execution
+
+### 5. Flow Visualization
+
+Consider visualizing the flow structure:
+- Show which agents were involved in processing a request
+- Highlight the current position in the flow
+- Consider a simplified flowchart visualization
+- Use breadcrumbs to show the path through different agents
+- Implement transitions between agent states
+- Visualize recursion and cycling in intuitive ways
+
+### 6. Conversation History
+
+Implement robust conversation tracking:
+- Store and display the complete flow record
+- Allow users to review previous exchanges
+- Implement search and filtering by agent type
+- Consider exporting/saving functionality
+- Group related steps (like Superego evaluation + Inner agent response)
+
+### 7. Error Handling
+
+Design for graceful error recovery:
+- Create clear error states that don't disrupt the conversation flow
+- Implement retry mechanisms where appropriate
+- Provide helpful context when errors occur
+- Consider fallback options for failed requests
+
+### 8. Responsive Design
+
+Create an interface that works across devices:
+- Ensure layouts adapt to different screen sizes
+- Consider touch interfaces for tool interactions
+- Implement responsive typography and UI elements
+- Test across different browsers and platforms
+
+## API Limitations
+
+Frontend developers should be aware of these limitations:
+
+- **No Authentication**: This research system doesn't include authentication - add your own if needed
+- **No Rate Limiting**: Implement rate limiting at the reverse proxy level if required
+- **Single User Mode**: The system isn't designed for concurrent multi-user operation
+- **Limited Error Handling**: Error handling is minimal, consider adding more robust error handling in production
+- **Research Focus**: The system prioritizes research capabilities over production-ready features
+- **Minimal Abstraction**: The system uses a minimalist approach with few abstractions
+- **No Built-in Metrics**: There's no built-in performance or usage monitoring
+
+## Example Flow Execution
+
+Here's a complete example of a flow execution that shows the entire process:
+
+1. User sends: "Calculate 5*10"
+2. System creates a user step with next_agent=input_superego
+3. Superego evaluates input against its constitution
+4. Superego streams thinking process (not visible to user)
+5. Superego makes decision: ACCEPT
+6. Superego creates agent_guidance: "Simple calculation request. Verify result."
+7. Superego response streams to user: "I'll help you calculate that."
+8. System routes to calculator agent based on transition rules
+9. Calculator receives input and agent_guidance
+10. Calculator uses calculator tool: input="5*10", output="50"
+11. Calculator streams response: "The result of 5*10 is 50."
+12. Flow completes (next_agent=null)
+13. Complete flow record is available through API
+
+## Extension Points
+
+The API can be extended in several ways that frontend developers might want to support:
+
+1. **New Agent Types**: Support for additional specialized agents
+2. **Custom Tools**: Additional tools for agent use
+3. **Custom Flow Patterns**: More complex agent interaction patterns
+4. **Enhanced Constitutions**: More sophisticated value systems
+5. **Visual Customization**: Theming and branding options
+6. **Integration Hooks**: Connecting to external systems
+
+## Development Philosophy and Implementation Principles
+
+The system follows a set of core development principles that should be understood by frontend developers to maintain consistency across the project:
+
+### Ruthless Minimalism
+
+The codebase adheres to a philosophy of ruthless minimalism:
+- **Code as Liability, Not Asset**: Every line must justify its existence
+- **Library Over Custom Code**: Use existing libraries rather than reimplementing functionality
+- **Avoid OOP Boilerplate**: No classes when maps/arrays suffice; no getters/setters for direct access
+- **Functional Over Object-Oriented**: Favor pure functions over stateful objects
+- **Flat Data Over Deep Hierarchies**: Prefer simple data structures over complex object hierarchies
+- **No Unnecessary Abstraction**: Don't create wrapper functions, middleware, or transformation layers that add little value
+- **Composition Over Inheritance**: Choose functional composition patterns instead of inheritance hierarchies
+
+### Implementation Focus
+
+- **Minimal Implementation**: Focused on research, not production
+- **Functional Programming Patterns**: Using immutable flow records and pure functions
+- **Explicit Tracking**: Clear tracking of agent identity and decision paths
+- **Stream Directly**: Stream without unnecessary buffering
+- **Comments Only for Non-Obvious Logic**: No documentation that restates what code already shows
+
+These principles should guide frontend implementation as well. Prefer using library tools over custom implementations, avoid unnecessary abstractions, use functional patterns where possible, and maintain flat, simple data structures that mirror the backend's approach.
+
+The mark of good system design in this project isn't how much you add - it's how much you remove while preserving capabilities.

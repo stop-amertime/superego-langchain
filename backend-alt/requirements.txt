@@ -1,0 +1,8 @@
+fastapi>=0.100.0
+uvicorn>=0.23.0
+langchain>=0.0.312
+langgraph>=0.0.15
+pydantic>=2.0.0
+anyio>=3.7.1
+sse-starlette>=1.6.5
+orjson>=3.9.10

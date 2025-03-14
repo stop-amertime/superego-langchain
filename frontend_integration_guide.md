@@ -263,3 +263,4 @@ function setupWebSocket() {
 5. **Superego Evaluations**: Consider whether to show superego evaluations to the user. This might be a configurable option.
 
 6. **Conversation History**: Store and display the conversation history, including all messages from different roles.
+    setHasError(false);
