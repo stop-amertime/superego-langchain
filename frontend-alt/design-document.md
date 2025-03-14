@@ -495,15 +495,36 @@ export function executeFlow(flowId, input) {
 ## Development Guidelines
 
 1. **Component Isolation**: Each component should be self-contained with minimal dependencies
-2. **TypeScript Usage**: Use TypeScript for type safety, especially for API interfaces
-3. **CSS Approach**: Use component-scoped CSS
-4. **Minimalist Dependencies**: Only add libraries when absolutely necessary
-5. **Progressive Enhancement**: Build core functionality first, then enhance
+2. **CSS Approach**: Use component-scoped CSS
+3. **Minimalist Dependencies**: USE LIBRARIES WHENEVER POSSIBLE!! 
+4. **Progressive Enhancement**: Build core functionality first, then enhance
 
 ## Future Enhancements
 
 1. **Flow Configuration UI**: Interface for creating and editing flows
 2. **Constitution Editor**: UI for editing agent constitutions
 3. **Advanced Visualization**: More sophisticated visualization of agent transitions
-4. **Performance Metrics**: Display agent performance and timing information
-5. **Export/Import**: Allow exporting and importing flow instances
+
+
+### Ruthless Minimalism
+
+The codebase adheres to a philosophy of ruthless minimalism:
+- **Code as Liability, Not Asset**: Every line must justify its existence
+- **Library Over Custom Code**: Use existing libraries rather than reimplementing functionality
+- **Avoid OOP Boilerplate**: No classes when maps/arrays suffice; no getters/setters for direct access
+- **Functional Over Object-Oriented**: Favor pure functions over stateful objects
+- **Flat Data Over Deep Hierarchies**: Prefer simple data structures over complex object hierarchies
+- **No Unnecessary Abstraction**: Don't create wrapper functions, middleware, or transformation layers that add little value
+- **Composition Over Inheritance**: Choose functional composition patterns instead of inheritance hierarchies
+
+### Implementation Focus
+
+- **Minimal Implementation**: Focused on research, not production
+- **Functional Programming Patterns**: Using immutable flow records and pure functions
+- **Explicit Tracking**: Clear tracking of agent identity and decision paths
+- **Stream Directly**: Stream without unnecessary buffering
+- **Comments Only for Non-Obvious Logic**: No documentation that restates what code already shows
+
+These principles should guide frontend implementation as well. Prefer using library tools over custom implementations, avoid unnecessary abstractions, use functional patterns where possible, and maintain flat, simple data structures that mirror the backend's approach.
+
+The mark of good system design in this project isn't how much you add - it's how much you remove while preserving capabilities.

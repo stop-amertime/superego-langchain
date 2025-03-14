@@ -119,7 +119,6 @@ These prompts outline specific tasks for individual developers to implement comp
 1. `flowInstancesStore.ts` for managing flow instances
 2. `currentFlowStore.ts` for current flow state
 3. `uiStateStore.ts` for UI state
-4. Types definition file for store state
 
 **Implementation Notes**:
 - Use derived stores where appropriate
@@ -127,6 +126,7 @@ These prompts outline specific tasks for individual developers to implement comp
 - Implement proper initialization and cleanup
 - Document store APIs for other developers
 - Consider performance for large flow records
+- Consdier whether a store is STRICTLY necessary! 
 
 ## Prompt 7: Tool Confirmation UI
 

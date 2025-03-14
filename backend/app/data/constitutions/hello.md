@@ -1,3 +1,0 @@
-# hello
-
-THING THING 
