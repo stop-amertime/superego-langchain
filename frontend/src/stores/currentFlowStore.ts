@@ -12,6 +12,8 @@ import { setLoading, setError } from './uiStateStore';
 // Core state stores
 const selectedInstanceId = writable<string | null>(null);
 const currentSteps = writable<FlowStep[]>([]);
+// Store the actual flow ID separately from the instance ID
+const flowDefinitionId = writable<string | null>(null);
 
 // Tool confirmation state
 interface PendingToolConfirmation {
@@ -50,7 +52,7 @@ const partialOutput = writable<{
 // Derived stores for specific pieces of state
 export const isExecuting = derived(executionState, $state => $state.isExecuting);
 export const executionError = derived(executionState, $state => $state.error);
-export const currentFlowId = derived(executionState, $state => $state.flowId);
+export const currentFlowId = derived(flowDefinitionId, $id => $id);
 
 // Derived store for the most recent step (for convenience)
 export const latestStep = derived(currentSteps, $steps => {
@@ -66,8 +68,9 @@ export const isStreamingComplete = derived(partialOutput, $output => $output.com
 /**
  * Select a flow instance and load its data
  * @param instanceId The flow instance ID to select, or null to unselect
+ * @param flowId The optional flow definition ID associated with this instance
  */
-async function selectFlowInstance(instanceId: string | null) {
+async function selectFlowInstance(instanceId: string | null, flowId?: string) {
   // Close any existing connection
   const currentConnection = get(executionState).connectionControl;
   if (currentConnection) {
@@ -93,11 +96,17 @@ async function selectFlowInstance(instanceId: string | null) {
       const steps = await getFlowInstance(instanceId);
       currentSteps.set(steps);
       
-      // Get the flow ID from the instance ID or metadata if available
-      // Since FlowStep doesn't have flow_id, we need to infer it from elsewhere
-      const flowId = instanceId.split('-')[0]; // Simple extraction, assuming format like "flowId-instanceHash"
-        
-      executionState.update(state => ({ ...state, flowId }));
+      // Use the provided flowId if available
+      if (flowId) {
+        flowDefinitionId.set(flowId);
+        executionState.update(state => ({ ...state, flowId }));
+      } else {
+        // Explicitly error out - the flow ID is required
+        const error = new Error("Flow ID is required but not provided");
+        console.error(error);
+        setError("Missing flow ID: Cannot execute flow without a proper flow definition ID");
+        throw error;
+      }
       setLoading(false);
     } catch (error) {
       console.error('Failed to load flow instance:', error);
@@ -136,11 +145,27 @@ function executeMessage(flowId: string, message: string) {
   
   currentSteps.update(steps => [...steps, userStep]);
   
+  // Get the current instance ID
+  const currentInstanceId = get(selectedInstanceId);
+  
+  // Fail early if no instance ID is available
+  if (!currentInstanceId) {
+    const error = new Error("Missing flow instance ID: Cannot execute flow without an active instance");
+    setError("Missing flow instance ID: Cannot execute flow without an active instance");
+    executionState.update(state => ({ 
+      ...state,
+      isExecuting: false, 
+      error: error.message
+    }));
+    return { cancel: () => {} };
+  }
+  
   // Start the streaming connection
   const connectionControl = executeFlowStream(
     flowId,
     message,
     {
+      instanceId: currentInstanceId, // Pass instance ID explicitly
       onPartialOutput: (output) => {
         partialOutput.update(state => ({
           ...state,
@@ -228,6 +253,7 @@ function resetCurrentFlow() {
   
   // Then reset all state
   selectedInstanceId.set(null);
+  flowDefinitionId.set(null);
   currentSteps.set([]);
   executionState.set({
     isExecuting: false,
@@ -244,6 +270,7 @@ export {
   currentSteps,
   executionState,
   partialOutput,
+  flowDefinitionId,
   
   // Functions
   selectFlowInstance,

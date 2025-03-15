@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
-  import { currentSteps, partialOutput, executionState } from '../../stores/currentFlowStore';
-  import type { FlowStep } from '../../types';
+  import { currentSteps, partialOutput, executionState, executeMessage, currentFlowId, flowDefinitionId } from '../../stores/currentFlowStore';
   
   import SuperegoCard from './SuperegoCard.svelte';
   import InnerAgentCard from './InnerAgentCard.svelte';
   import UserMessageCard from './UserMessageCard.svelte';
   import ConnectionLine from './ConnectionLine.svelte';
+  import ChatInput from './ChatInput.svelte';
   
   // Keep track of expanded card states
   let expandedCards = new Set<string>();
@@ -46,7 +46,8 @@
   }
 </script>
 
-<div class="conversation-container" bind:this={conversationContainer}>
+<div class="conversation-view">
+  <div class="conversation-container" bind:this={conversationContainer}>
   {#if $currentSteps.length === 0}
     <div class="empty-state">
       <p>No conversation started. Send a message to begin.</p>
@@ -74,14 +75,14 @@
       {/if}
     {/each}
     
-    {#if $executionState.isExecuting && $partialOutput}
+    {#if $executionState.isExecuting}
       <div class="partial-output">
         <div class="typing-indicator">
           <span></span>
           <span></span>
           <span></span>
         </div>
-        <div class="partial-text">{$partialOutput}</div>
+        <div class="partial-text">{$partialOutput.text}</div>
       </div>
     {/if}
     
@@ -91,10 +92,26 @@
       </div>
     {/if}
   {/if}
+  </div>
+  
+  <div class="input-container">
+    <ChatInput
+      disabled={$executionState.isExecuting}
+      loading={$executionState.isExecuting}
+      on:submit={(e) => $flowDefinitionId && executeMessage($flowDefinitionId, e.detail.message)}
+    />
+  </div>
 </div>
 
 <style>
+  .conversation-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  
   .conversation-container {
+    flex: 1;
     display: flex;
     flex-direction: column;
     padding: 16px;
@@ -161,5 +178,11 @@
     border: 1px solid #ffcdd2;
     border-radius: 4px;
     color: #cb2431;
+  }
+  
+  .input-container {
+    padding: 16px;
+    border-top: 1px solid #eee;
+    background-color: white;
   }
 </style>

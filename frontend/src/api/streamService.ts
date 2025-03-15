@@ -59,15 +59,19 @@ export function createEventSource(
   
   // Create URL with query parameters
   function buildUrl(): string {
-    const url = new URL(`${API_BASE_URL}/${endpoint}`);
+    // Create a URLSearchParams object for the query string
+    const searchParams = new URLSearchParams();
     
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        url.searchParams.append(key, value);
+        searchParams.append(key, value);
       }
     });
     
-    return url.toString();
+    // For EventSource, we need to use the /flow path directly
+    // because Vite is configured to proxy /flow to the backend
+    // This matches the pattern in flowService.ts which works
+    return `/flow/execute?${searchParams}`;
   }
   
   // Function to create and set up the EventSource
@@ -155,10 +159,20 @@ export function createEventSource(
       ['partial_output', 'complete_step', 'error'].forEach(eventType => {
         eventSource?.addEventListener(eventType, (event: MessageEvent) => {
           try {
-            const data = JSON.parse(event.data);
-            eventHandlers.onEvent?.(eventType, data.data || data);
+            // Only try to parse if data exists and is not undefined
+            if (event.data) {
+              const data = JSON.parse(event.data);
+              eventHandlers.onEvent?.(eventType, data.data || data);
+            } else if (eventType === 'error') {
+              // Handle case where error event doesn't have data
+              eventHandlers.onEvent?.(eventType, { message: 'Connection error' });
+            }
           } catch (parseError) {
             console.error(`Error parsing ${eventType} event:`, parseError);
+            // Still notify with a generic error if parsing fails
+            if (eventType === 'error') {
+              eventHandlers.onEvent?.(eventType, { message: 'Error processing server response' });
+            }
           }
         });
       });
@@ -210,6 +224,7 @@ export function executeFlowStream(
   flowId: string, 
   input: string, 
   eventHandlers: {
+    instanceId: string; // Required parameter for flow instance ID
     onPartialOutput?: (output: { partial_output: string; complete?: boolean }) => void;
     onCompleteStep?: (step: FlowStep) => void;
     onError?: (error: { message: string; code?: string }) => void;
@@ -228,7 +243,8 @@ export function executeFlowStream(
   // Prepare parameters
   const params: Record<string, string> = {
     flow_id: flowId,
-    input: input
+    input: input,
+    instance_id: eventHandlers.instanceId // Always include instance_id
   };
   
   if (options?.conversationId) {

@@ -4,7 +4,7 @@
  */
 
 // Default API configuration
-export const API_BASE_URL = '/api';
+export const API_BASE_URL = '';
 export const DEFAULT_TIMEOUT = 10000; // 10 seconds
 
 /**

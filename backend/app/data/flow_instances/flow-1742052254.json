@@ -1,0 +1,41 @@
+{
+  "definition": {
+    "name": "Basic Calculator",
+    "description": "A simple calculator flow with Superego monitoring",
+    "graph": {
+      "start": "input_superego",
+      "nodes": {
+        "input_superego": {
+          "type": "superego",
+          "agent_id": "input_superego",
+          "constitution": "default",
+          "transitions": {
+            "BLOCK": null,
+            "ACCEPT": "calculator_agent",
+            "CAUTION": "calculator_agent",
+            "NEEDS_CLARIFICATION": "input_superego"
+          }
+        },
+        "calculator_agent": {
+          "type": "inner_agent",
+          "agent_id": "calculator",
+          "system_prompt": "You are a calculator agent that performs arithmetic operations. You can solve basic and complex math problems including addition, subtraction, multiplication, division, powers, roots, logarithms, and basic calculus. Show your work and verify results.",
+          "tools": [
+            "calculator"
+          ],
+          "transitions": {
+            "COMPLETE": null,
+            "NEEDS_TOOL": "calculator_agent"
+          }
+        }
+      }
+    }
+  },
+  "history": [],
+  "tool_confirmation_settings": {
+    "confirm_all": true,
+    "exempted_tools": []
+  },
+  "pending_tool_executions": {},
+  "created_at": "2025-03-15T15:24:15.102829"
+}

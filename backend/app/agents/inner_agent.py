@@ -59,6 +59,9 @@ async def process_with_tools(
     Returns:
         Tuple of (response, tool_usage, agent_guidance, next_agent)
     """
+    import logging
+    logger = logging.getLogger("uvicorn")
+    
     # Create output parser
     parser = PydanticOutputParser(pydantic_object=InnerAgentOutput)
     
@@ -67,19 +70,24 @@ async def process_with_tools(
     if available_tools:
         tools_str = "\n".join([f"- {name}" for name in available_tools.keys()])
     
-    # Create prompt
-    prompt = ChatPromptTemplate.from_template(
-        INNER_AGENT_PROMPT + "\n\n" + parser.get_format_instructions()
-    )
+    # Get format instructions
+    format_instructions = parser.get_format_instructions()
     
-    # Format prompt
+    # Create prompt template with format instructions as a parameter
+    template = INNER_AGENT_PROMPT + "\n\nOutput Format Instructions:\n{format_instructions}"
+    prompt = ChatPromptTemplate.from_template(template)
+    
+    # Format prompt with all parameters
     messages = prompt.format_messages(
         system_prompt=system_prompt,
         input_message=input_message,
         agent_guidance=agent_guidance,
         agent_id=agent_id,
-        available_tools=tools_str
+        available_tools=tools_str,
+        format_instructions=format_instructions
     )
+    
+    logger.info(f"Inner agent prompt formatted successfully")
     
     # Call LLM
     response = await llm.ainvoke(messages)
@@ -90,11 +98,14 @@ async def process_with_tools(
     if result.tool_usage:
         tool_usage_dict = result.tool_usage.dict()
     
-    # Validate next_agent decision
+    # Validate next_agent decision and map to valid transition keys
     if result.next_agent == "self":
         result.next_agent = agent_id
-    elif result.next_agent == "complete" or result.next_agent == "end":
-        result.next_agent = None
+    elif result.next_agent == "complete" or result.next_agent == "end" or result.next_agent is None:
+        # Map None to COMPLETE for proper transitions
+        result.next_agent = "COMPLETE"
+    elif result.next_agent == agent_id:
+        result.next_agent = "NEEDS_TOOL"
     
     return result.response, tool_usage_dict, result.agent_guidance, result.next_agent
 
@@ -173,8 +184,9 @@ async def create_inner_agent_step(
 
 async def create_inner_agent_node(
     llm: BaseChatModel,
-    agent_id: str,
-    system_prompt: str,
+    agent_id: str = "inner_agent",
+    max_iterations: int = 3,
+    system_prompt: str = "",
     available_tools: Dict[str, callable] = None
 ) -> callable:
     """Create a langgraph-compatible inner agent node function
@@ -182,6 +194,7 @@ async def create_inner_agent_node(
     Args:
         llm: The language model to use
         agent_id: Identifier for this agent
+        max_iterations: Maximum number of iterations
         system_prompt: System prompt for this agent
         available_tools: Dict of available tools
         
@@ -191,23 +204,30 @@ async def create_inner_agent_node(
     if available_tools is None:
         available_tools = {}
         
-    async def inner_agent_node(
-        state: Dict[str, Any]
-    ) -> AsyncGenerator[StreamChunk, None]:
+    async def inner_agent_node(state):
         """Inner agent node function that processes inputs and streams results"""
+        import logging
+        logger = logging.getLogger("uvicorn")
+        
+        logger.info(f"Inner agent node called with state type: {type(state).__name__}")
+        
         # Get the most recent message
-        steps = state.get("steps", [])
+        flow_record = state.flow_record
+        steps = flow_record
         prev_step = steps[-1] if steps else {}
         
         # Get input and agent_guidance from previous step
-        input_message = prev_step.get("input", "")
+        input_message = prev_step.get("response", "")  # Get input from response field
         agent_guidance = prev_step.get("agent_guidance", "")
         
-        # Early yield of processing message
-        yield StreamChunk(
-            partial_output=f"Processing as {agent_id}...",
+        logger.info(f"Inner agent processing input: '{input_message[:50]}...'")
+        
+        # Emit an initial response to show we're processing
+        initial_chunk = StreamChunk(
+            partial_output="Processing your request...",
             complete=False
         )
+        yield initial_chunk
         
         # Process the input
         response, tool_usage, new_guidance, next_agent = await process_with_tools(
@@ -215,20 +235,30 @@ async def create_inner_agent_node(
             agent_id, available_tools
         )
         
+        # Emit the actual response text right away as a stream chunk
+        response_chunk = StreamChunk(
+            partial_output=response,
+            complete=False
+        )
+        yield response_chunk
+        
         # If tool usage is indicated
         if tool_usage and "tool_name" in tool_usage and tool_usage["tool_name"] in available_tools:
             tool_name = tool_usage["tool_name"]
             tool_input = tool_usage["input"]
             
+            logger.info(f"Tool usage detected: {tool_name}")
+            
             # Check if the flow instance has confirmation settings
-            instance_id = state.get("instance_id")
+            # Access instance_id properly from the FlowState object
+            instance_id = state.instance_id
             
             # Default to requiring confirmation
             requires_confirmation = True
             
             # Check if we can access the flow engine and confirmation settings
             from ..flow.engine import flow_engine
-            if hasattr(flow_engine, 'active_flows') and instance_id in flow_engine.active_flows:
+            if instance_id and hasattr(flow_engine, 'active_flows') and instance_id in flow_engine.active_flows:
                 flow_instance = flow_engine.active_flows[instance_id]
                 
                 # Get confirmation settings
@@ -241,10 +271,12 @@ async def create_inner_agent_node(
                 # Add this information to tool_usage
                 tool_usage["requires_confirmation"] = requires_confirmation
                 
-                # If confirmation is required, save pending tool execution and yield awaiting message
+                # If confirmation is required, save pending tool execution
                 if requires_confirmation:
                     # Generate a unique ID for this tool execution
                     tool_execution_id = str(uuid.uuid4())
+                    
+                    logger.info(f"Tool requires confirmation, ID: {tool_execution_id}")
                     
                     # Store pending tool execution
                     flow_instance["pending_tool_executions"][tool_execution_id] = {
@@ -263,18 +295,9 @@ async def create_inner_agent_node(
                     
                     # Create thinking and update agent guidance
                     new_guidance += f"\nTool {tool_name} requires confirmation. Execution ID: {tool_execution_id}"
-                    
-                    # Yield message about awaiting confirmation
-                    yield StreamChunk(
-                        partial_output=f"Waiting for confirmation to use tool: {tool_name}...",
-                        complete=False
-                    )
                 else:
                     # No confirmation needed, execute the tool
-                    yield StreamChunk(
-                        partial_output=f"Using tool: {tool_name}...",
-                        complete=False
-                    )
+                    logger.info(f"Executing tool without confirmation: {tool_name}")
                     
                     tool_result = await execute_tool(tool_name, tool_input, available_tools)
                     
@@ -287,10 +310,7 @@ async def create_inner_agent_node(
                         new_guidance += f"\nTool {tool_name} returned: {str(tool_result)}"
             else:
                 # Cannot access confirmation settings, default to execute
-                yield StreamChunk(
-                    partial_output=f"Using tool: {tool_name}...",
-                    complete=False
-                )
+                logger.info(f"Could not access confirmation settings, executing tool: {tool_name}")
                 
                 tool_result = await execute_tool(tool_name, tool_input, available_tools)
                 
@@ -316,11 +336,17 @@ async def create_inner_agent_node(
             new_guidance, thinking, system_prompt, next_agent
         )
         
-        # Create final streaming chunk with complete step
-        yield StreamChunk(
-            partial_output=step.response,
-            complete=True,
-            flow_step=step
-        )
+        # Create the flow step as a dictionary
+        step_dict = step.dict()
+        
+        # Log the step being returned
+        logger.info(f"Inner agent step created with ID: {step.step_id}, next_agent: {step.next_agent}")
+        
+        # Yield the final state as the last item
+        final_state = {
+            "flow_record": flow_record + [step_dict],
+            "instance_id": state.instance_id  # Preserve the instance_id
+        }
+        yield final_state
     
     return inner_agent_node

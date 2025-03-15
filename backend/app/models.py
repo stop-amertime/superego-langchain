@@ -13,6 +13,7 @@ class StreamChunk(BaseModel):
     partial_output: str = Field(description="Partial output content")
     complete: bool = Field(description="Whether this is the final chunk")
     flow_step: Optional[Dict[str, Any]] = Field(None, description="Complete flow step (only present on final chunk)")
+    instance_id: Optional[str] = Field(None, description="ID of the flow instance this chunk belongs to")
 
 
 class FlowStep(BaseModel):

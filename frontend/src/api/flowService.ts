@@ -44,6 +44,22 @@ export async function getFlowInstance(instanceId: string): Promise<FlowStep[]> {
 }
 
 /**
+ * Create a new flow instance
+ */
+export async function createNewFlowInstance(flowId: string): Promise<FlowInstance> {
+  return fetchWithTimeout<FlowInstance>(
+    `${API_BASE_URL}/flow/create_instance`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ flow_id: flowId })
+    }
+  );
+}
+
+/**
  * Execute a flow with POST request
  */
 export async function executeFlowSync(

@@ -32,7 +32,7 @@ async def superego_evaluate(
     llm: BaseChatModel,
     input_message: str, 
     constitution: str
-) -> Tuple[str, str, str]:
+) -> Tuple[str, str, str, str]:
     """Evaluate an input message against a constitution
     
     Args:
@@ -41,22 +41,30 @@ async def superego_evaluate(
         constitution: The constitution text to evaluate against
         
     Returns:
-        Tuple of (decision, agent_guidance, thinking)
+        Tuple of (decision, agent_guidance, thinking, response)
     """
+    import logging
+    logger = logging.getLogger("uvicorn")
+    
     # Create output parser
     parser = PydanticOutputParser(pydantic_object=SuperegoOutput)
     
-    # Create prompt
-    prompt = ChatPromptTemplate.from_template(
-        SUPEREGO_PROMPT + "\n\n" + parser.get_format_instructions()
-    )
+    # Get format instructions
+    format_instructions = parser.get_format_instructions()
     
-    # Format prompt
+    # Create prompt without concatenating format_instructions directly
+    template = SUPEREGO_PROMPT + "\n\nOutput Format Instructions:\n{format_instructions}"
+    prompt = ChatPromptTemplate.from_template(template)
+    
+    # Format prompt with all parameters
     messages = prompt.format_messages(
         constitution=constitution,
         input_message=input_message,
-        agent_id="superego"
+        agent_id="superego",
+        format_instructions=format_instructions
     )
+    
+    logger.info("Prompt formatted successfully")
     
     # Call LLM
     response = await llm.ainvoke(messages)
@@ -68,7 +76,7 @@ async def superego_evaluate(
         result.decision = CAUTION
         result.agent_guidance += " (Note: Invalid decision was corrected to CAUTION)"
     
-    return result.decision, result.agent_guidance, result.thinking
+    return result.decision, result.agent_guidance, result.thinking, result.response
 
 
 async def create_superego_step(
@@ -77,7 +85,8 @@ async def create_superego_step(
     decision: str,
     agent_guidance: str,
     thinking: str,
-    user_message: str
+    user_message: str,
+    ai_response: str
 ) -> FlowStep:
     """Create a superego step from evaluation results
     
@@ -88,26 +97,21 @@ async def create_superego_step(
         agent_guidance: Hidden context for next agent
         thinking: Reasoning process
         user_message: Original user message
+        ai_response: Response from the LLM evaluation
         
     Returns:
         Complete FlowStep
     """
-    # Determine next agent based on decision
+    # Determine next agent based on decision, but use AI's response text
     next_agent = None
-    response = ""
     
     if decision == BLOCK:
-        response = "I'm unable to help with that request."
         next_agent = None
-    elif decision in [ACCEPT, CAUTION]:
-        response = "I'll help with that."
-        # Next agent will be determined by the flow definition
+    elif decision in [ACCEPT, CAUTION, NEEDS_CLARIFICATION]:
+        # Keep existing logic for NEEDS_CLARIFICATION
         next_agent = "inner_agent"  # Default, will be overridden by flow router
-    elif decision == NEEDS_CLARIFICATION:
-        response = "Could you provide more information?"
-        next_agent = agent_id  # Loop back to self for clarification
     
-    # Create step
+    # Create step with AI response
     return FlowStep(
         step_id=str(uuid.uuid4()),
         agent_id=agent_id,
@@ -118,56 +122,84 @@ async def create_superego_step(
         thinking=thinking,
         decision=decision,
         agent_guidance=agent_guidance,
-        response=response,
+        response=ai_response,  # Use the AI-generated response
         next_agent=next_agent
     )
 
 
 async def create_superego_node(
     llm: BaseChatModel,
-    agent_id: str = "superego"
+    agent_id: str = "superego",
+    max_iterations: int = 3,
+    constitution: Optional[str] = None
 ) -> callable:
     """Create a langgraph-compatible superego node function
     
     Args:
         llm: The language model to use
         agent_id: Identifier for this agent
+        max_iterations: Maximum number of iterations
+        constitution: Constitution text to evaluate against
         
     Returns:
-        Async generator function that streams results
+        Langgraph-compatible node function
     """
-    async def superego_node(
-        state: Dict[str, Any]
-    ) -> AsyncGenerator[StreamChunk, None]:
-        """Superego node function that evaluates inputs and streams results"""
-        # Get the most recent user message
-        steps = state.get("steps", [])
-        prev_step = steps[-1] if steps else {}
-        user_message = prev_step.get("response", "")
-        constitution = prev_step.get("constitution", "")
+    async def superego_node_fn(state):
+        """Node function for LangGraph that processes the state"""
+        import logging
+        logger = logging.getLogger("uvicorn")
         
-        # Early yield of processing message
-        yield StreamChunk(
-            partial_output="Evaluating input against constitution...",
+        logger.info(f"Superego node called with state type: {type(state).__name__}")
+        
+        flow_record = state.flow_record
+        prev_step = flow_record[-1] if flow_record else {}
+        user_message = prev_step.get("response", "")
+        constitution_text = constitution or prev_step.get("constitution", "")
+        
+        logger.info(f"Evaluating user message: '{user_message[:50]}...' against constitution")
+        
+        # Stream partial outputs to show we're working
+        # First, emit a message that we're processing
+        initial_chunk = StreamChunk(
+            partial_output="Evaluating your message...",
             complete=False
         )
+        logger.debug(f"Yielding initial streaming chunk: {initial_chunk}")
+        yield initial_chunk
         
         # Evaluate the input
-        decision, agent_guidance, thinking = await superego_evaluate(
-            llm, user_message, constitution
+        decision, agent_guidance, thinking, ai_response = await superego_evaluate(
+            llm, user_message, constitution_text
         )
         
-        # Create the step
+        logger.info(f"Superego decision: {decision}")
+        logger.debug(f"AI generated response: {ai_response}")
+        
+        # Send the actual AI response as a stream chunk 
+        response_chunk = StreamChunk(
+            partial_output=ai_response,
+            complete=False
+        )
+        logger.debug(f"Yielding response streaming chunk: {response_chunk}")
+        yield response_chunk
+        
+        # Create the step, passing AI's response
         step = await create_superego_step(
             prev_step, agent_id, decision, agent_guidance, 
-            thinking, user_message
+            thinking, user_message, ai_response
         )
         
-        # Create final streaming chunk with complete step
-        yield StreamChunk(
-            partial_output=step.response,
-            complete=True,
-            flow_step=step
-        )
+        # Convert step to dictionary
+        step_dict = step.dict()
+        
+        # Log the step being returned
+        logger.info(f"Superego step created with ID: {step.step_id}, next_agent: {step.next_agent}")
+        
+        # Final yield with the complete flow record state
+        logger.debug(f"Yielding final state update with response: {step.response}")
+        yield {
+            "flow_record": flow_record + [step_dict],
+            "instance_id": state.instance_id  # Preserve the instance_id
+        }
     
-    return superego_node
+    return superego_node_fn
